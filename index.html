@@ -3,93 +3,153 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>VitSence</title>
+    <title>VitSence (4-Device Integrated)</title>
     <link rel="stylesheet" href="style.css" />
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+    <style>
+      /* 全体レイアウト */
+      body {
+        font-family: 'Segoe UI', sans-serif;
+        font-size: clamp(14px, 1.6vw, 16px);
+        margin: 1rem;
+        background-color: rgb(241, 241, 226);
+        color: #333;
+      }
+      h1 { color: #46a15f; }
+      
+      /* パネルスタイル */
+      .panel {
+        background-color: #ffffff;
+        padding: 1.5rem;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        margin-bottom: 1.5rem;
+      }
+      .section-title {
+        margin-top: 0;
+        border-bottom: 2px solid #46a15f;
+        padding-bottom: 0.5rem;
+        color: #333;
+      }
+
+      /* グリッドレイアウト */
+      .grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+      @media (min-width: 1000px) { .grid { grid-template-columns: 1fr 1fr; } }
+
+      /* 左右デバイスの配置 */
+      .subgrid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 1rem;
+      }
+      .box {
+        background: #f9f9f9;
+        padding: 10px;
+        border-radius: 6px;
+        border: 1px solid #eee;
+      }
+      .box h3 { margin: 0 0 10px 0; font-size: 1.1em; color: #555; }
+
+      /* コントロール */
+      .toolbar { margin-bottom: 1rem; }
+      .controls { margin-bottom: 0.5rem; display: flex; flex-wrap: wrap; gap: 5px; }
+      
+      button {
+        padding: 0.5em 1em; border: none; border-radius: 4px;
+        background-color: #46a15f; color: #fff; cursor: pointer;
+      }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      button:hover:not(:disabled) { background-color: #005fa3; }
+      
+      select.device-select {
+        padding: 0.4em; border: 1px solid #ccc; border-radius: 4px;
+        background: #fff; max-width: 100%;
+      }
+
+      .row { font-size: 0.9em; margin: 3px 0; }
+      .val { font-variant-numeric: tabular-nums; font-weight: bold; }
+      .tiny-muted { font-size: 0.8em; color: #777; margin-top: 5px; }
+    </style>
   </head>
   <body>
-    <h1>MAX/MLX センサ値ビューア</h1>
-    <!-- 統一コントロール -->
+    <h1>VitSence (MAX/MLX 4台統合計測)</h1>
+    
     <div class="toolbar">
       <button id="measure-all" disabled>計測開始</button>
       <button id="download-all" disabled>一括ダウンロード(Excel)</button>
     </div>
 
     <div class="grid">
-      <!-- MAX パネル（R/L） -->
       <section class="panel" id="max-panel">
-        <h2 class="section-title">MAX センサデータ（心拍）</h2>
+        <h2 class="section-title">MAX センサデータ（心拍・脈波）</h2>
         <div class="subgrid">
           <div class="box">
-            <h3>MAX R</h3>
+            <h3>デバイス 1 (MAX R)</h3>
             <div class="controls">
-              <button id="maxR-connect">BLE接続</button>
-              <button id="maxR-disconnect" disabled>接続解除</button>
+              <select id="max1-select" class="device-select"></select>
+              <button id="max1-connect">接続</button>
+              <button id="max1-disconnect" disabled>解除</button>
             </div>
-            <div class="row">接続状態: <span id="maxR-status">未接続</span></div>
-            <div class="row">デバイス名: <span id="maxR-deviceName">-</span></div>
-            <div class="row">BPM: <span id="maxR-bpmValue">-</span></div>
-            <div class="row">平均BPM: <span id="maxR-avgBpmValue">-</span></div>
-            <div class="row">経過時間: <span id="maxR-timeValue">-</span> s</div>
-            <div class="row">受信時刻: <span id="maxR-recvTimeValue">-</span></div>
-            <div class="row">距離状態: <span id="maxR-distanceStatus">-</span></div>
+            <div class="row">状態: <span id="max1-status">未接続</span></div>
+            <div class="row">名前: <span id="max1-deviceName">-</span></div>
+            <div class="row">時間: <span id="max1-timeValue" class="val">-</span> s</div>
+            <div class="row">距離: <span id="max1-distanceStatus">-</span></div>
           </div>
           <div class="box">
-            <h3>MAX L</h3>
+            <h3>デバイス 2 (MAX L)</h3>
             <div class="controls">
-              <button id="maxL-connect">BLE接続</button>
-              <button id="maxL-disconnect" disabled>接続解除</button>
+              <select id="max2-select" class="device-select"></select>
+              <button id="max2-connect">接続</button>
+              <button id="max2-disconnect" disabled>解除</button>
             </div>
-            <div class="row">接続状態: <span id="maxL-status">未接続</span></div>
-            <div class="row">デバイス名: <span id="maxL-deviceName">-</span></div>
-            <div class="row">BPM: <span id="maxL-bpmValue">-</span></div>
-            <div class="row">平均BPM: <span id="maxL-avgBpmValue">-</span></div>
-            <div class="row">経過時間: <span id="maxL-timeValue">-</span> s</div>
-            <div class="row">受信時刻: <span id="maxL-recvTimeValue">-</span></div>
-            <div class="row">距離状態: <span id="maxL-distanceStatus">-</span></div>
+            <div class="row">状態: <span id="max2-status">未接続</span></div>
+            <div class="row">名前: <span id="max2-deviceName">-</span></div>
+            <div class="row">時間: <span id="max2-timeValue" class="val">-</span> s</div>
+            <div class="row">距離: <span id="max2-distanceStatus">-</span></div>
           </div>
         </div>
         <div id="max-chartContainer">
           <canvas id="max-realtimeChart"></canvas>
-          <p class="tiny-muted">チャートは <strong>BPM（R/L）</strong> を表示します（平均BPMは上の数値欄で更新）．</p>
+          <p class="tiny-muted">実線: デバイス1 (R) / 点線: デバイス2 (L)</p>
         </div>
       </section>
 
-      <!-- MLX パネル（R/L） -->
       <section class="panel" id="mlx-panel">
         <h2 class="section-title">MLX センサデータ（鼓膜温度）</h2>
         <div class="subgrid">
           <div class="box">
-            <h3>MLX R</h3>
+            <h3>デバイス 3 (MLX R)</h3>
             <div class="controls">
-              <button id="mlxR-connect">BLE接続</button>
-              <button id="mlxR-disconnect" disabled>接続解除</button>
+              <select id="mlx1-select" class="device-select"></select>
+              <button id="mlx1-connect">接続</button>
+              <button id="mlx1-disconnect" disabled>解除</button>
             </div>
-            <div class="row">接続状態: <span id="mlxR-status">未接続</span></div>
-            <div class="row">デバイス名: <span id="mlxR-deviceName">-</span></div>
-            <div class="row">Ambient (°C): <span id="mlxR-ambValue" class="val">-</span></div>
-            <div class="row">Object (°C): <span id="mlxR-objValue" class="val">-</span></div>
-            <div class="row">経過時間: <span id="mlxR-timeValue" class="val">-</span> s</div>
-            <div class="row">受信時刻: <span id="mlxR-recvTimeValue" class="val">-</span></div>
+            <div class="row">状態: <span id="mlx1-status">未接続</span></div>
+            <div class="row">名前: <span id="mlx1-deviceName">-</span></div>
+            <div class="row">Amb: <span id="mlx1-ambValue" class="val">-</span> °C</div>
+            <div class="row">Obj: <span id="mlx1-objValue" class="val">-</span> °C</div>
+            <div class="row">時間: <span id="mlx1-timeValue" class="val">-</span> s</div>
           </div>
           <div class="box">
-            <h3>MLX L</h3>
+            <h3>デバイス 4 (MLX L)</h3>
             <div class="controls">
-              <button id="mlxL-connect">BLE接続</button>
-              <button id="mlxL-disconnect" disabled>接続解除</button>
+              <select id="mlx2-select" class="device-select"></select>
+              <button id="mlx2-connect">接続</button>
+              <button id="mlx2-disconnect" disabled>解除</button>
             </div>
-            <div class="row">接続状態: <span id="mlxL-status">未接続</span></div>
-            <div class="row">デバイス名: <span id="mlxL-deviceName">-</span></div>
-            <div class="row">Ambient (°C): <span id="mlxL-ambValue" class="val">-</span></div>
-            <div class="row">Object (°C): <span id="mlxL-objValue" class="val">-</span></div>
-            <div class="row">経過時間: <span id="mlxL-timeValue" class="val">-</span> s</div>
-            <div class="row">受信時刻: <span id="mlxL-recvTimeValue" class="val">-</span></div>
+            <div class="row">状態: <span id="mlx2-status">未接続</span></div>
+            <div class="row">名前: <span id="mlx2-deviceName">-</span></div>
+            <div class="row">Amb: <span id="mlx2-ambValue" class="val">-</span> °C</div>
+            <div class="row">Obj: <span id="mlx2-objValue" class="val">-</span> °C</div>
+            <div class="row">時間: <span id="mlx2-timeValue" class="val">-</span> s</div>
           </div>
         </div>
         <div id="mlx-chartContainer">
           <canvas id="mlx-realtimeChart"></canvas>
-          <p class="tiny-muted">チャートは <strong>Object 温度（R/L）</strong> を表示します（Ambient は上の数値欄で更新）．</p>
+          <p class="tiny-muted">Object温度を表示 (青: デバイス3 / 赤: デバイス4)</p>
         </div>
       </section>
     </div>

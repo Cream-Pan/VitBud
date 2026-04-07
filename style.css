@@ -60,56 +60,36 @@ button:hover {
   gap: 20px; 
 }
 
-@media (min-width: 900px) { 
-  .grid { grid-template-columns: 1fr 1fr; } 
+select.device-select {
+  padding: 0.5em;
+  margin-right: 0.5em;
+  margin-bottom: 0.4em;
+  border: 1px solid #bbbbbb;
+  border-radius: 4px;
+  font-size: 1em;
+  background-color: #e3fde7;
 }
 
-.panel { 
-  border: 1px solid #ddd; 
-  border-radius: 10px; 
-  padding: 12px; 
-  background: #fff; 
+/* コンテナ: 強制的に横並び（2列）にする */
+.device-container {
+  display: grid;
+  grid-template-columns: 1fr 1fr; /* 1:1 の比率で横並び */
+  gap: 15px; /* パネル間の隙間 */
+  margin-top: 1rem;
 }
 
-.panel h2 { 
-  margin-top: 0; 
+/* パネル: 背景を白にする */
+.device-panel {
+  background-color: #ffffff;
+  padding: 1rem 1.5rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
 
-.section-title { 
-  color: #46a15f; 
-}
-
-.tiny-muted { 
-  font-size: .9em; 
-  opacity: .8; 
-}
-
-canvas { 
-  max-height: 360px; 
-}
-
-.toolbar { 
-  display:flex; 
-  gap:8px; 
-  flex-wrap:wrap; 
-  margin: 0 0 16px 0; 
-}
-
-.toolbar button { 
-  padding: 0.6em 1em; 
-  border: none; 
-  border-radius: 6px; 
-  background-color: #46a15f; 
-  color: #fff; 
-  font-size: 1em; 
-  cursor: pointer; 
-}
-
-.toolbar button:disabled { 
-  opacity: 0.5; 
-  cursor: not-allowed; 
-}
-
-.toolbar button:hover { 
-  background-color: #005fa3; 
+/* 画面が極端に狭い場合（スマホなど）のみ縦並びに戻す */
+@media (max-width: 768px) {
+  .device-container {
+    grid-template-columns: 1fr;
+  }
 }

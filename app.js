@@ -1,461 +1,488 @@
+// ===== 設定 =====
 const MAX_SERVICE_UUID = "3a5197ff-07ce-499e-8d37-d3d457af549a";
-const MAX_CHARACTERISTIC_UUID = "abcdef01-1234-5678-1234-56789abcdef0"; // float32 BPM + uint32 elapsed
-const MAX_RAW_CHARACTERISTIC_UUID = "abcdef01-1234-5678-1234-56789abcdef1"; // uint32 IR + uint32 RED + uint32 elapsed
+const MAX_RAW_CHARACTERISTIC_UUID = "abcdef01-1234-5678-1234-56789abcdef1";
+const MAX_SAMPLE_BYTE_SIZE = 12;
+const MAX_DEVICE_NAMES = ['MAX R', 'MAX R mini', 'MAX L', 'MAX L mini'];
+const MAX_PLOT_COUNT = 100; 
 
-// ===== MLX90632 側定数 =====
 const MLX_SERVICE_UUID = "4a5197ff-07ce-499e-8d37-d3d457af549a";
-// float32 amb + float32 obj + int16 rawAmb + int16 rawObj + uint32 elapsed (合計16バイトを想定)
-const MLX_CHARACTERISTIC_UUID = "fedcba98-7654-3210-fedc-ba9876543210"; 
+const MLX_CHARACTERISTIC_UUID = "fedcba98-7654-3210-fedc-ba9876543210";
+const MLX_SAMPLE_BYTE_SIZE = 16;
+const MLX_DEVICE_NAMES = ['MLX R', 'MLX R mini', 'MLX L', 'MLX L mini'];
+const MLX_PLOT_COUNT = 50; 
 
-// ===== デバイス名（Arduino側で設定） =====
-const DEVICE_NAMES = {
-  MAX: { R: "MAX R", L: "MAX L" },
-  MLX: { R: "MLX R", L: "MLX L" }
+// ===== デバイス管理オブジェクト (4台構成) =====
+const devices = {
+  // MAX 1 (旧 MAX R 相当)
+  "max1": {
+    type: 'MAX',
+    name: '',
+    serviceUUID: MAX_SERVICE_UUID,
+    charUUID: MAX_RAW_CHARACTERISTIC_UUID,
+    device: null, characteristic: null, measureStartEpochMs: null,
+    data: [], buffer: new Uint8Array(), eventHandler: null,
+    ui: {
+      select: document.getElementById("max1-select"),
+      connect: document.getElementById("max1-connect"),
+      disconnect: document.getElementById("max1-disconnect"),
+      status: document.getElementById("max1-status"),
+      deviceName: document.getElementById("max1-deviceName"),
+      timeValue: document.getElementById("max1-timeValue"),
+      distanceStatus: document.getElementById("max1-distanceStatus"),
+    }
+  },
+  // MAX 2 (旧 MAX L 相当)
+  "max2": {
+    type: 'MAX',
+    name: '',
+    serviceUUID: MAX_SERVICE_UUID,
+    charUUID: MAX_RAW_CHARACTERISTIC_UUID,
+    device: null, characteristic: null, measureStartEpochMs: null,
+    data: [], buffer: new Uint8Array(), eventHandler: null,
+    ui: {
+      select: document.getElementById("max2-select"),
+      connect: document.getElementById("max2-connect"),
+      disconnect: document.getElementById("max2-disconnect"),
+      status: document.getElementById("max2-status"),
+      deviceName: document.getElementById("max2-deviceName"),
+      timeValue: document.getElementById("max2-timeValue"),
+      distanceStatus: document.getElementById("max2-distanceStatus"),
+    }
+  },
+  // MLX 1 (旧 MLX R 相当)
+  "mlx1": {
+    type: 'MLX',
+    name: '',
+    serviceUUID: MLX_SERVICE_UUID,
+    charUUID: MLX_CHARACTERISTIC_UUID,
+    device: null, characteristic: null, measureStartEpochMs: null,
+    data: [], buffer: new Uint8Array(), eventHandler: null,
+    ui: {
+      select: document.getElementById("mlx1-select"),
+      connect: document.getElementById("mlx1-connect"),
+      disconnect: document.getElementById("mlx1-disconnect"),
+      status: document.getElementById("mlx1-status"),
+      deviceName: document.getElementById("mlx1-deviceName"),
+      timeValue: document.getElementById("mlx1-timeValue"),
+      ambValue: document.getElementById("mlx1-ambValue"),
+      objValue: document.getElementById("mlx1-objValue"),
+    }
+  },
+  // MLX 2 (旧 MLX L 相当)
+  "mlx2": {
+    type: 'MLX',
+    name: '',
+    serviceUUID: MLX_SERVICE_UUID,
+    charUUID: MLX_CHARACTERISTIC_UUID,
+    device: null, characteristic: null, measureStartEpochMs: null,
+    data: [], buffer: new Uint8Array(), eventHandler: null,
+    ui: {
+      select: document.getElementById("mlx2-select"),
+      connect: document.getElementById("mlx2-connect"),
+      disconnect: document.getElementById("mlx2-disconnect"),
+      status: document.getElementById("mlx2-status"),
+      deviceName: document.getElementById("mlx2-deviceName"),
+      timeValue: document.getElementById("mlx2-timeValue"),
+      ambValue: document.getElementById("mlx2-ambValue"),
+      objValue: document.getElementById("mlx2-objValue"),
+    }
+  }
 };
 
-// 共通ユーティリティ
-function pad(n, w = 2) { return String(n).padStart(w, "0"); }
+// ===== グローバルUI =====
+const measureAllBtn = document.getElementById("measure-all");
+const downloadAllBtn = document.getElementById("download-all");
+
+// ===== 初期化処理 (プルダウン生成) =====
+function init() {
+  // MAXプルダウン
+  const maxNames = MAX_DEVICE_NAMES;
+  ['max1', 'max2'].forEach(id => {
+    maxNames.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      devices[id].ui.select.appendChild(opt);
+    });
+  });
+  // MLXプルダウン
+  const mlxNames = MLX_DEVICE_NAMES;
+  ['mlx1', 'mlx2'].forEach(id => {
+    mlxNames.forEach(name => {
+      const opt = document.createElement('option');
+      opt.value = name; opt.textContent = name;
+      devices[id].ui.select.appendChild(opt);
+    });
+  });
+}
+init();
+
+// ===== ユーティリティ =====
 function formatLocalTimeWithMs(epochMs) {
   const d = new Date(epochMs);
-  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`;
-}
-function formatLocalTimeForCSV(epochMs) {
-  const d = new Date(epochMs);
-  const year = d.getFullYear();
-  const month = pad(d.getMonth() + 1);
-  const day = pad(d.getDate());
-  const hours = pad(d.getHours());
-  const minutes = pad(d.getMinutes());
-  const seconds = pad(d.getSeconds());
-  const milliseconds = pad(d.getMilliseconds(), 3);
-  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${milliseconds}`;
+  const pad = (n, w=2) => String(n).padStart(w, "0");
+  return `${d.getFullYear()}/${pad(d.getMonth()+1)}/${pad(d.getDate())} `
+       + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`;
 }
 
-// チャート作成
-function makeLineChart(ctx, yTitle, datasets) {
-  return new Chart(ctx, {
-    type: "line",
-    data: { labels: [], datasets },
-    options: {
-      responsive: true,
-      animation: { duration: 0 },
-      scales: {
-        x: { type: "linear", title: { display: true, text: "経過時間 (s)" } },
-        y: { beginAtZero: false, title: { display: true, text: yTitle } }
+// ===== チャート管理 =====
+let maxChart = null;
+let mlxChart = null;
+
+function ensureCharts() {
+  // MAXチャート (IR/RED × 2台分 = 4本)
+  if (!maxChart) {
+    const ctx = document.getElementById("max-realtimeChart").getContext("2d");
+    maxChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          // Device 1 (実線)
+          { label: "IR (Dev1)", data: [], yAxisID: 'y-ir', borderColor: "rgba(75, 192, 192, 1)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
+          { label: "RED (Dev1)", data: [], yAxisID: 'y-red', borderColor: "rgba(255, 99, 132, 1)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
+          // Device 2 (点線)
+          { label: "IR (Dev2)", data: [], yAxisID: 'y-ir', borderColor: "rgba(75, 192, 192, 0.6)", borderWidth: 2, borderDash: [5, 5], fill:false, pointRadius:0, tension:0.2 },
+          { label: "RED (Dev2)", data: [], yAxisID: 'y-red', borderColor: "rgba(255, 99, 132, 0.6)", borderWidth: 2, borderDash: [5, 5], fill:false, pointRadius:0, tension:0.2 }
+        ]
+      },
+      options: {
+        responsive: true, animation: { duration: 0 },
+        scales: {
+          x: { type: 'linear', title: { display: true, text: '経過時間 (s)' } },
+          'y-ir': { type: 'linear', position: 'left', title: { display: true, text: 'IR Value', color: 'rgb(75, 192, 192)' }, ticks: { color: 'rgb(75, 192, 192)' } },
+          'y-red': { type: 'linear', position: 'right', title: { display: true, text: 'RED Value', color: 'rgb(255, 99, 132)' }, ticks: { color: 'rgb(255, 99, 132)' }, grid: { drawOnChartArea: false } }
+        }
       }
+    });
+  }
+
+  // MLXチャート (ObjectTemp × 2台分 = 2本)
+  if (!mlxChart) {
+    const ctx = document.getElementById("mlx-realtimeChart").getContext("2d");
+    mlxChart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          { label: "Obj (Dev3)", data: [], borderColor: "rgb(54, 162, 235)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
+          { label: "Obj (Dev4)", data: [], borderColor: "rgb(255, 99, 132)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 }
+        ]
+      },
+      options: {
+        responsive: true, animation: { duration: 0 },
+        scales: {
+          x: { type: "linear", title: { display: true, text: "経過時間 (s)" } },
+          y: { beginAtZero: false, title: { display: true, text: "温度 (°C)" } }
+        }
+      }
+    });
+  }
+}
+
+// 共通チャート更新関数
+function updateMaxChartData(id, elapsedS, ir, red) {
+  if (!maxChart) ensureCharts();
+  const ds = maxChart.data.datasets;
+  // max1 -> index 0, 1 / max2 -> index 2, 3
+  const baseIdx = (id === 'max1') ? 0 : 2;
+  
+  ds[baseIdx].data.push({ x: elapsedS, y: ir });
+  ds[baseIdx + 1].data.push({ x: elapsedS, y: red });
+
+  // データ数制限
+  if (ds[baseIdx].data.length > MAX_PLOT_COUNT) {
+    ds[baseIdx].data.shift();
+    ds[baseIdx + 1].data.shift();
+  }
+  maxChart.update('none');
+}
+
+function updateMlxChartData(id, elapsedS, obj) {
+  if (!mlxChart) ensureCharts();
+  const ds = mlxChart.data.datasets;
+  // mlx1 -> index 0 / mlx2 -> index 1
+  const idx = (id === 'mlx1') ? 0 : 1;
+  
+  ds[idx].data.push({ x: elapsedS, y: obj });
+
+  if (ds[idx].data.length > MLX_PLOT_COUNT) {
+    ds[idx].data.shift();
+  }
+  mlxChart.update('none');
+}
+
+function clearDeviceData(id) {
+  const dev = devices[id];
+  dev.data = [];
+  dev.buffer = new Uint8Array();
+  dev.measureStartEpochMs = null;
+  
+  // UIリセット
+  dev.ui.timeValue.textContent = "-";
+  if (dev.type === 'MAX') dev.ui.distanceStatus.textContent = "-";
+  if (dev.type === 'MLX') {
+    dev.ui.ambValue.textContent = "-";
+    dev.ui.objValue.textContent = "-";
+  }
+
+  // チャートクリア (計測開始時に全クリアするため、ここでは個別の消去はしない)
+}
+
+function resetAllCharts() {
+  if (maxChart) { maxChart.data.datasets.forEach(d => d.data = []); maxChart.update(); }
+  if (mlxChart) { mlxChart.data.datasets.forEach(d => d.data = []); mlxChart.update(); }
+}
+
+// ===== 通知ハンドラ =====
+function handleMaxNotification(event, id) {
+  const dev = devices[id];
+  if (dev.measureStartEpochMs === null) { dev.buffer = new Uint8Array(); return; }
+
+  const newData = new Uint8Array(event.target.value.buffer);
+  const combined = new Uint8Array(dev.buffer.length + newData.length);
+  combined.set(dev.buffer);
+  combined.set(newData, dev.buffer.length);
+  dev.buffer = combined;
+
+  while (dev.buffer.length >= MAX_SAMPLE_BYTE_SIZE) {
+    const sampleView = new DataView(dev.buffer.buffer, 0, MAX_SAMPLE_BYTE_SIZE);
+    const irValue = sampleView.getUint32(0, true);
+    const redValue = sampleView.getUint32(4, true);
+    const sensorElapsedMs = sampleView.getUint32(8, true);
+
+    const recvEpochMs = Date.now();
+    // 初回時刻同期は startMeasurementAll で行われるが、念のため
+    if(!dev.measureStartEpochMs) dev.measureStartEpochMs = recvEpochMs;
+    const measureElapsedS = (recvEpochMs - dev.measureStartEpochMs) / 1000;
+
+    // 距離判定
+    if (irValue < 50000) {
+      dev.ui.distanceStatus.textContent = "離れています";
+      dev.ui.distanceStatus.style.color = "#d00";
+    } else {
+      dev.ui.distanceStatus.textContent = "正常";
+      dev.ui.distanceStatus.style.color = "#046307";
     }
+
+    // データ保存
+    dev.data.push({
+      irValue, redValue,
+      sensor_elapsed_ms: sensorElapsedMs,
+      recv_epoch_ms: recvEpochMs,
+      recv_jst: formatLocalTimeWithMs(recvEpochMs),
+      measure_elapsed_s: measureElapsedS
+    });
+
+    dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
+    updateMaxChartData(id, measureElapsedS, irValue, redValue);
+
+    dev.buffer = dev.buffer.slice(MAX_SAMPLE_BYTE_SIZE);
+  }
+}
+
+function handleMlxNotification(event, id) {
+  const dev = devices[id];
+  if (dev.measureStartEpochMs === null) return;
+  const v = event.target.value;
+  if (v.byteLength !== MLX_SAMPLE_BYTE_SIZE) return;
+
+  const recvEpochMs = Date.now();
+  const amb = v.getFloat32(0, true);
+  const obj = v.getFloat32(4, true);
+  const rawAmbient = v.getInt16(8, true);
+  const rawObject = v.getInt16(10, true);
+  const sensorElapsedMs = v.getUint32(12, true);
+
+  if(!dev.measureStartEpochMs) dev.measureStartEpochMs = recvEpochMs;
+  const measureElapsedS = (recvEpochMs - dev.measureStartEpochMs) / 1000;
+  const sensorElapsedS = sensorElapsedMs / 1000;
+
+  dev.ui.ambValue.textContent = amb.toFixed(4);
+  dev.ui.objValue.textContent = obj.toFixed(4);
+  dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
+
+  updateMlxChartData(id, measureElapsedS, obj);
+
+  // データ保存 (measure_elapsed_sは保存しない)
+  dev.data.push({
+    amb, obj, rawAmbient, rawObject,
+    sensor_elapsed_ms: sensorElapsedMs,
+    sensor_elapsed_s: sensorElapsedS,
+    recv_epoch_ms: recvEpochMs,
+    recv_jst: formatLocalTimeWithMs(recvEpochMs)
   });
 }
 
-// ===== MAX ユニットファクトリ =====
-function createMAXUnit(side) {
-  const prefix = side === 'R' ? 'maxR' : 'maxL';
-  const els = {
-    connect: document.getElementById(`${prefix}-connect`),
-    disconnect: document.getElementById(`${prefix}-disconnect`),
-    status: document.getElementById(`${prefix}-status`),
-    deviceName: document.getElementById(`${prefix}-deviceName`),
-    bpm: document.getElementById(`${prefix}-bpmValue`),
-    avg: document.getElementById(`${prefix}-avgBpmValue`),
-    time: document.getElementById(`${prefix}-timeValue`),
-    recv: document.getElementById(`${prefix}-recvTimeValue`),
-    distance: document.getElementById(`${prefix}-distanceStatus`),
-  };
-  return {
-    side,
-    device: null, service: null, ch: null, rawCh: null,
-    measureStartEpochMs: null,
-    bpmBuffer: [], RATE_SIZE: 4,
-    receivedData: [],
-    rawReceivedData: [],
-    connected: false,
-    els,
-    resetView(){
-      this.receivedData.length = 0;
-      this.rawReceivedData.length = 0;
-      this.bpmBuffer = [];
-      this.els.bpm.textContent = "-";
-      this.els.avg.textContent = "-";
-      this.els.time.textContent = "-";
-      this.els.recv.textContent = "-";
-      this.els.distance.textContent = "-";
-      this.measureStartEpochMs = null;
-    },
-    notifyHandler: function(event){
-      const v = event.target.value; if(v.byteLength!==8) return;
-      const recvEpochMs = Date.now();
-      const bpm = v.getFloat32(0,true);
-      const sensorElapsedMs = v.getUint32(4,true);
-      const sensorElapsedS = sensorElapsedMs/1000;
-      this.bpmBuffer.push(bpm); if(this.bpmBuffer.length>this.RATE_SIZE) this.bpmBuffer.shift();
-      const beatAvg = this.bpmBuffer.reduce((a,b)=>a+b,0)/this.bpmBuffer.length;
-      const measureElapsedS = this.measureStartEpochMs ? (recvEpochMs - this.measureStartEpochMs)/1000 : 0;
-      this.els.bpm.textContent = bpm.toFixed(2);
-      this.els.avg.textContent = isFinite(beatAvg)? beatAvg.toFixed(2):"-";
-      this.els.time.textContent = measureElapsedS.toFixed(2);
-      this.els.recv.textContent = formatLocalTimeWithMs(recvEpochMs);
-      // チャート更新はグローバルで行う
-      updateMAXChart(this.side, bpm, measureElapsedS);
-      this.receivedData.push({ bpm, beatAvg, sensor_elapsed_ms:sensorElapsedMs, sensor_elapsed_s:sensorElapsedS,
-        measure_elapsed_s:measureElapsedS, recv_epoch_ms:recvEpochMs, recv_jst: formatLocalTimeForCSV(recvEpochMs) });
-    },
-    rawHandler: function(event){
-      const v = event.target.value; 
-      if(v.byteLength !== 12) return;
-      const recvEpochMs = Date.now();
-      const irValue = v.getUint32(0, true);
-      const redValue = v.getUint32(4, true);
-      const sensorElapsedMs = v.getUint32(8, true);
+// ===== 接続・切断ロジック =====
+async function connectDevice(id) {
+  const dev = devices[id];
+  const selectedName = dev.ui.select.value;
+  
+  if (!selectedName) {
+    alert("デバイス名を選択してください");
+    return;
+  }
 
-      // 距離判定ロジック (IR Value < 50000 なら離れている - MLX-MAX.jsのロジックを移植)
-      if(irValue < 50000){
-        this.els.distance.textContent="センサとの距離が離れています"; 
-        this.els.distance.style.color="#d00"; this.els.distance.style.fontWeight="600"; 
-      } else { 
-        this.els.distance.textContent="距離は正常です"; 
-        this.els.distance.style.color="#046307"; this.els.distance.style.fontWeight="600"; 
+  try {
+    dev.ui.status.textContent = "接続中...";
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ name: selectedName }],
+      optionalServices: [dev.serviceUUID]
+    });
+    
+    dev.device = device;
+    dev.name = selectedName; // 選択された名前を記憶
+    
+    const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(dev.serviceUUID);
+    dev.characteristic = await service.getCharacteristic(dev.charUUID);
+
+    // ハンドラ設定
+    if (dev.type === 'MAX') {
+      dev.eventHandler = (e) => handleMaxNotification(e, id);
+    } else {
+      dev.eventHandler = (e) => handleMlxNotification(e, id);
+    }
+    dev.characteristic.addEventListener('characteristicvaluechanged', dev.eventHandler);
+
+    // UI更新
+    dev.ui.status.textContent = "接続済み";
+    dev.ui.deviceName.textContent = device.name;
+    dev.ui.connect.disabled = true;
+    dev.ui.select.disabled = true;
+    dev.ui.disconnect.disabled = false;
+
+    // 切断時処理
+    device.addEventListener('gattserverdisconnected', () => {
+      dev.ui.status.textContent = "未接続";
+      dev.ui.deviceName.textContent = "-";
+      dev.ui.connect.disabled = false;
+      dev.ui.select.disabled = false;
+      dev.ui.disconnect.disabled = true;
+      if(dev.eventHandler) {
+         try{ dev.characteristic.removeEventListener('characteristicvaluechanged', dev.eventHandler); }catch{}
       }
-
-      // ローデータ格納 
-      this.rawReceivedData.push({ 
-          irValue, redValue, 
-          sensor_elapsed_ms: sensorElapsedMs,
-          recv_epoch_ms: recvEpochMs, 
-          recv_jst: formatLocalTimeForCSV(recvEpochMs) 
-      });
-    },
-  };
-}
-
-// ===== MLX ユニットファクトリ =====
-function createMLXUnit(side){
-  const prefix = side === 'R' ? 'mlxR' : 'mlxL';
-  const els = {
-    connect: document.getElementById(`${prefix}-connect`),
-    disconnect: document.getElementById(`${prefix}-disconnect`),
-    status: document.getElementById(`${prefix}-status`),
-    deviceName: document.getElementById(`${prefix}-deviceName`),
-    amb: document.getElementById(`${prefix}-ambValue`),
-    obj: document.getElementById(`${prefix}-objValue`),
-    time: document.getElementById(`${prefix}-timeValue`),
-    recv: document.getElementById(`${prefix}-recvTimeValue`),
-  };
-  return {
-    side,
-    device:null, service:null, ch:null,
-    measureStartEpochMs:null,
-    receivedData:[],
-    connected:false,
-    els,
-    resetView(){
-      this.receivedData.length = 0;
-      this.latestSample = null;
-      this.els.amb.textContent = "-";
-      this.els.obj.textContent = "-";
-      this.els.time.textContent = "-";
-      this.els.recv.textContent = "-";
-      this.measureStartEpochMs = null;
-    },
-    notifyHandler:function(event){
-      const v=event.target.value; if(v.byteLength!==16) return;
-      const recvEpochMs=Date.now();
-      const amb=v.getFloat32(0,true); 
-      const obj=v.getFloat32(4,true);
-      const rawAmbient = v.getInt16(8, true); // Rawデータ取得
-      const rawObject = v.getInt16(10, true); // Rawデータ取得
-      const sensorElapsedMs=v.getUint32(12,true); // 8バイトオフセットを12に変更
-
-      // 初回測定時間のセット
-      if(!this.measureStartEpochMs) this.measureStartEpochMs = recvEpochMs;
-      
-      const sensorElapsedS = sensorElapsedMs/1000;
-      const measureElapsedS = (recvEpochMs - this.measureStartEpochMs)/1000;
-
-      // 画面表示
-      this.els.amb.textContent = amb.toFixed(4);
-      this.els.obj.textContent = obj.toFixed(4);
-      this.els.time.textContent = measureElapsedS.toFixed(2);
-      this.els.recv.textContent = formatLocalTimeWithMs(recvEpochMs);
-
-      updateMLXChart(this.side, obj, measureElapsedS);
-
-      // データロギング (Rawデータを含む)
-      this.receivedData.push({ amb, obj, rawAmbient, rawObject, sensor_elapsed_ms:sensorElapsedMs, sensor_elapsed_s:sensorElapsedS,
-        measure_elapsed_s:measureElapsedS, recv_epoch_ms:recvEpochMs, recv_jst: formatLocalTimeForCSV(recvEpochMs) });
-    },
-  };
-}
-
-// ===== グローバル状態 =====
-const MAX_R = createMAXUnit('R');
-const MAX_L = createMAXUnit('L');
-const MLX_R = createMLXUnit('R');
-const MLX_L = createMLXUnit('L');
-
-const measureAllBtn = document.getElementById("measure-all");
-const downloadAllBtn = document.getElementById("download-all");
-let measuring = false;
-
-// ===== チャート（MAX: BPM R/L，MLX: Object R/L） =====
-let maxChart = null;
-let mlxChart = null;
-function ensureCharts(){
-  if(!maxChart){
-    const ctxMax = document.getElementById("max-realtimeChart").getContext("2d");
-    maxChart = makeLineChart(ctxMax, "BPM", [
-      { label: "BPM R", data: [], borderWidth: 2, borderColor: "rgb(75, 192, 192)", fill:false, pointRadius:0, tension:0.2 },
-      { label: "BPM L", data: [], borderWidth: 2, borderColor: "rgb(255, 99, 132)", fill:false, pointRadius:0, tension:0.2 },
-    ]);
-  }
-  if(!mlxChart){
-    const ctxMlx = document.getElementById("mlx-realtimeChart").getContext("2d");
-    mlxChart = makeLineChart(ctxMlx, "Object 温度 (°C)", [
-      { label: "Obj R (°C)", data: [], borderWidth: 2, borderColor: "rgb(75, 192, 192)", fill:false, pointRadius:0, tension:0.2 },
-      { label: "Obj L (°C)", data: [], borderWidth: 2, borderColor: "rgb(255, 99, 132)", fill:false, pointRadius:0, tension:0.2 },
-    ]);
-  }
-}
-function updateMAXChart(side, value, elapsedS){
-  ensureCharts();
-  const dsR = maxChart.data.datasets[0];
-  const dsL = maxChart.data.datasets[1];
-  const pushPoint = (dataset, x, y)=>{ dataset.data.push({x, y}); };
-  const maxPts = 50;
-  if(side==='R') pushPoint(dsR, elapsedS, value); else pushPoint(dsL, elapsedS, value);
-  // 各系列ごとに点数を制限
-  if(dsR.data.length>maxPts) dsR.data.shift();
-  if(dsL.data.length>maxPts) dsL.data.shift();
-  maxChart.update('none');
-}
-function updateMLXChart(side, objValue, elapsedS){
-  ensureCharts();
-  const labels = mlxChart.data.labels;
-  const dsR = mlxChart.data.datasets[0];
-  const dsL = mlxChart.data.datasets[1];
-  const maxPts = 50;
-  if(side==='R') dsR.data.push({x: elapsedS, y: objValue});
-  else  dsL.data.push({x: elapsedS, y: objValue});
-  if(dsR.data.length>maxPts) dsR.data.shift();
-  if(dsL.data.length>maxPts) dsL.data.shift();
-  mlxChart.update('none');
-}
-function resetCharts(){
-  if(maxChart){ maxChart.data.labels=[]; maxChart.data.datasets.forEach(d=>d.data=[]); maxChart.update(); }
-  if(mlxChart){ mlxChart.data.labels=[]; mlxChart.data.datasets.forEach(d=>d.data=[]); mlxChart.update(); }
-}
-
-// ===== 統一ボタンと状態管理 =====
-function allConnected(){
-  return MAX_R.connected && MAX_L.connected && MLX_R.connected && MLX_L.connected;
-}
-function anyDataExists(){
-  return MAX_R.receivedData.length || MAX_L.receivedData.length || MLX_R.receivedData.length || MLX_L.receivedData.length;
-}
-function updateUnifiedButtons(){
-  measureAllBtn.disabled = !allConnected();
-  downloadAllBtn.disabled = !anyDataExists();
-  measureAllBtn.textContent = measuring ? "計測停止" : "計測開始";
-}
-
-// ===== 接続/切断 ハンドラ =====
-async function connectMAX(unit){
-  try{
-    unit.els.status.textContent = "接続中...";
-    unit.device = await navigator.bluetooth.requestDevice({ filters:[{ name: DEVICE_NAMES.MAX[unit.side] }], optionalServices:[MAX_SERVICE_UUID] });
-    const server = await unit.device.gatt.connect();
-    unit.service = await server.getPrimaryService(MAX_SERVICE_UUID);
-    unit.ch = await unit.service.getCharacteristic(MAX_CHARACTERISTIC_UUID);
-    unit.rawCh = await unit.service.getCharacteristic(MAX_RAW_CHARACTERISTIC_UUID);
-    unit.connected = true;
-    unit.els.status.textContent = "接続済み"; unit.els.deviceName.textContent = unit.device.name;
-    unit.els.connect.disabled = true; unit.els.disconnect.disabled = false; // 計測開始までは切断不可にせずとも可
-    unit.device.addEventListener("gattserverdisconnected", ()=>{
-      try{ unit.ch?.removeEventListener("characteristicvaluechanged", unit.notifyHandler);}catch{}
-      try{ unit.rawCh?.removeEventListener("characteristicvaluechanged", unit.rawHandler);}catch{}
-      unit.connected=false; unit.els.status.textContent="未接続"; unit.els.deviceName.textContent="-";
-      unit.els.connect.disabled=false; unit.els.disconnect.disabled=true;
-      if(measuring) stopMeasurementAll();
-      unit.resetView(); updateUnifiedButtons();
+      clearDeviceData(id);
+      updateUnifiedButtons();
     });
-  }catch(e){
-    console.error("MAX 接続エラー:", e);
-    alert(`MAX ${unit.side} への接続に失敗しました．`);
-    unit.connected=false; unit.els.status.textContent="未接続"; unit.els.deviceName.textContent="-";
-    unit.els.connect.disabled=false; unit.els.disconnect.disabled=true;
-  } finally { updateUnifiedButtons(); }
+
+  } catch (e) {
+    console.error(e);
+    alert(`${id} の接続に失敗しました`);
+    dev.ui.status.textContent = "未接続";
+  } finally {
+    updateUnifiedButtons();
+  }
 }
-async function disconnectMAX(unit){
-  try{
-    if(unit.device?.gatt.connected){
-      if(measuring){ await unit.ch.stopNotifications().catch(()=>{}); await unit.rawCh.stopNotifications().catch(()=>{}); }
-      unit.device.gatt.disconnect();
+
+async function disconnectDevice(id) {
+  const dev = devices[id];
+  if (dev.device && dev.device.gatt.connected) {
+    if (dev.characteristic) {
+      try { await dev.characteristic.stopNotifications(); } catch(e){}
     }
-  }catch{}
+    dev.device.gatt.disconnect();
+  }
 }
-async function connectMLX(unit){
-  try{
-    unit.els.status.textContent = "接続中...";
-    unit.device = await navigator.bluetooth.requestDevice({ filters:[{ name: DEVICE_NAMES.MLX[unit.side] }], optionalServices:[MLX_SERVICE_UUID] });
-    const server = await unit.device.gatt.connect();
-    unit.service = await server.getPrimaryService(MLX_SERVICE_UUID);
-    unit.ch = await unit.service.getCharacteristic(MLX_CHARACTERISTIC_UUID);
-    unit.connected = true;
-    unit.els.status.textContent = "接続済み"; unit.els.deviceName.textContent = unit.device.name;
-    unit.els.connect.disabled = true; unit.els.disconnect.disabled = false;
-    unit.device.addEventListener("gattserverdisconnected", ()=>{
-      try{ unit.ch?.removeEventListener("characteristicvaluechanged", unit.notifyHandler);}catch{}
-      unit.connected=false; unit.els.status.textContent="未接続"; unit.els.deviceName.textContent="-";
-      unit.els.connect.disabled=false; unit.els.disconnect.disabled=true;
-      if(measuring) stopMeasurementAll();
-      unit.resetView(); updateUnifiedButtons();
-    });
-  }catch(e){
-    console.error("MLX 接続エラー:", e);
-    alert(`MLX ${unit.side} への接続に失敗しました．`);
-    unit.connected=false; unit.els.status.textContent="未接続"; unit.els.deviceName.textContent="-";
-    unit.els.connect.disabled=false; unit.els.disconnect.disabled=true;
-  } finally { updateUnifiedButtons(); }
+
+// ボタンイベントリスナ登録
+Object.keys(devices).forEach(id => {
+  devices[id].ui.connect.addEventListener('click', () => connectDevice(id));
+  devices[id].ui.disconnect.addEventListener('click', () => disconnectDevice(id));
+});
+
+// ===== 統合制御 (計測開始・停止) =====
+function allConnected() {
+  // 4台すべて接続されているかチェック (必要に応じて条件を緩めてもOK)
+  return Object.values(devices).every(d => d.device && d.device.gatt.connected);
 }
-async function disconnectMLX(unit){
-  try{
-    if(unit.device?.gatt.connected){
-      if(measuring){ await unit.ch.stopNotifications().catch(()=>{}); }
-      unit.device.gatt.disconnect();
+
+function updateUnifiedButtons() {
+  const allReady = allConnected();
+  measureAllBtn.disabled = !allReady;
+  
+  // データが1つでもあればDL可能
+  const hasData = Object.values(devices).some(d => d.data.length > 0);
+  downloadAllBtn.disabled = !hasData;
+}
+
+measureAllBtn.addEventListener('click', async () => {
+  const isMeasuring = measureAllBtn.textContent.includes("停止");
+  
+  if (isMeasuring) {
+    // 停止処理
+    for (const id in devices) {
+      const dev = devices[id];
+      if (dev.characteristic) {
+        try { await dev.characteristic.stopNotifications(); } catch(e){}
+        dev.measureStartEpochMs = null;
+      }
     }
-  }catch{}
-}
-
-// ボタン割当
-MAX_R.els.connect.addEventListener('click', ()=>connectMAX(MAX_R));
-MAX_L.els.connect.addEventListener('click', ()=>connectMAX(MAX_L));
-MAX_R.els.disconnect.addEventListener('click', ()=>disconnectMAX(MAX_R));
-MAX_L.els.disconnect.addEventListener('click', ()=>disconnectMAX(MAX_L));
-MLX_R.els.connect.addEventListener('click', ()=>connectMLX(MLX_R));
-MLX_L.els.connect.addEventListener('click', ()=>connectMLX(MLX_L));
-MLX_R.els.disconnect.addEventListener('click', ()=>disconnectMLX(MLX_R));
-MLX_L.els.disconnect.addEventListener('click', ()=>disconnectMLX(MLX_L));
-
-// ===== 計測の開始／停止（統一） =====
-async function startMeasurementAll(){
-  // チャート＆ビュー初期化
-  [MAX_R, MAX_L, MLX_R, MLX_L].forEach(u=>u.resetView());
-  resetCharts(); ensureCharts();
-
-  // MAX開始
-  for(const u of [MAX_R, MAX_L]){
-    if(!u._bound){
-     u._notifyHandlerBound = u.notifyHandler.bind(u);
-     u._rawHandlerBound   = u.rawHandler.bind(u);
-     u._bound = true;
-   }
-   try{ u.ch?.removeEventListener("characteristicvaluechanged", u._notifyHandlerBound);}catch{}
-   try{ u.rawCh?.removeEventListener("characteristicvaluechanged", u._rawHandlerBound);}catch{}
-   u.ch.addEventListener("characteristicvaluechanged", u._notifyHandlerBound);
-   u.rawCh.addEventListener("characteristicvaluechanged", u._rawHandlerBound);
-    await u.ch.startNotifications();
-    await u.rawCh.startNotifications();
-    u.measureStartEpochMs = Date.now();
-  }
-  // MLX開始
-  for(const u of [MLX_R, MLX_L]){
-    if(!u._bound){
-      u._notifyHandlerBound = u.notifyHandler.bind(u);
-      u._bound = true;
-   }
-   try{ u.ch?.removeEventListener("characteristicvaluechanged", u._notifyHandlerBound);}catch{}
-   u.ch.addEventListener("characteristicvaluechanged", u._notifyHandlerBound);
-    await u.ch.startNotifications();
-    u.measureStartEpochMs = Date.now();
-  }
-  measuring = true; updateUnifiedButtons();
-}
-
-async function stopMeasurementAll(){
-  // MAX停止
-  for(const u of [MAX_R, MAX_L]){
-    try{ await u.ch.stopNotifications(); }catch{}
-    try{ await u.rawCh.stopNotifications(); }catch{}
-    try{ u.ch?.removeEventListener("characteristicvaluechanged", u._notifyHandlerBound);}catch{}
-    try{ u.rawCh?.removeEventListener("characteristicvaluechanged", u._rawHandlerBound);}catch{}
-    u.measureStartEpochMs = null;
-  }
-  // MLX停止
-  for(const u of [MLX_R, MLX_L]){
-    try{ await u.ch.stopNotifications(); }catch{}
-    try{ u.ch?.removeEventListener("characteristicvaluechanged", u._notifyHandlerBound);}catch{}
-    u.measureStartEpochMs = null;
-  }
-  measuring = false; updateUnifiedButtons();
-}
-
-measureAllBtn.addEventListener("click", async ()=>{
-  if(!allConnected()) return;
-  if(measuring) await stopMeasurementAll(); else {
-    try{ await startMeasurementAll(); }
-    catch(e){ console.error("統一計測開始エラー:", e); await stopMeasurementAll(); alert("計測開始に失敗しました．4台の接続を確認してください．"); }
+    measureAllBtn.textContent = "計測開始";
+    
+  } else {
+    // 開始処理
+    if(!allConnected()) {
+      alert("すべてのデバイスを接続してください");
+      return;
+    }
+    
+    resetAllCharts();
+    const startTime = Date.now();
+    
+    for (const id in devices) {
+      clearDeviceData(id); // データリセット
+      const dev = devices[id];
+      if (dev.characteristic) {
+        await dev.characteristic.startNotifications();
+        dev.measureStartEpochMs = startTime; 
+      }
+    }
+    measureAllBtn.textContent = "計測停止";
   }
 });
 
-// ===== 一括ダウンロード（Excelブック：4シート） =====
-function appendSheetFromJson(wb, name, rows){
-  if(rows.length>0){
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, name);
-  }else{
-    const ws = XLSX.utils.aoa_to_sheet([["データなし"]]);
-    XLSX.utils.book_append_sheet(wb, ws, name);
+// ===== ダウンロード (Excel) =====
+function appendSheet(wb, name, data, type) {
+  if (data.length === 0) {
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["データなし"]]), name);
+    return;
   }
+  
+  let rows;
+  if (type === 'MAX') {
+    rows = data.map(r => ({
+      IR_Value: r.irValue,
+      RED_Value: r.redValue,
+      SensorElapsed_ms: r.sensor_elapsed_ms,
+      RecvEpoch_ms: r.recv_epoch_ms,
+      RecvJST: r.recv_jst,
+      MeasureElapsed_s: r.measure_elapsed_s
+    }));
+  } else {
+    rows = data.map(r => ({
+      Ambient_C: r.amb,
+      Object_C: r.obj,
+      Raw_Ambient: r.rawAmbient,
+      Raw_Object: r.rawObject,
+      SensorElapsed_ms: r.sensor_elapsed_ms,
+      SensorElapsed_s: r.sensor_elapsed_s,
+      // MeasureElapsed_s は削除
+      RecvEpoch_ms: r.recv_epoch_ms,
+      RecvJST: r.recv_jst
+    }));
+  }
+  
+  const ws = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(wb, ws, name);
 }
-downloadAllBtn.addEventListener("click", ()=>{
+
+downloadAllBtn.addEventListener('click', () => {
   const wb = XLSX.utils.book_new();
-  // MAX R
-  appendSheetFromJson(wb, "MAX_R", MAX_R.receivedData.map(r=>({
-    BPM: r.bpm, Avg_BPM: r.beatAvg,
-    SensorElapsed_ms: r.sensor_elapsed_ms, SensorElapsed_s: r.sensor_elapsed_s,
-    MeasureElapsed_s: r.measure_elapsed_s,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-  // MAX R (RAW)
-  appendSheetFromJson(wb, "MAX_R_RAW", MAX_R.rawReceivedData.map(r=>({
-    IR_Value: r.irValue, RED_Value: r.redValue,
-    SensorElapsed_ms: r.sensor_elapsed_ms,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-  // MAX L
-  appendSheetFromJson(wb, "MAX_L", MAX_L.receivedData.map(r=>({
-    BPM: r.bpm, Avg_BPM: r.beatAvg,
-    SensorElapsed_ms: r.sensor_elapsed_ms, SensorElapsed_s: r.sensor_elapsed_s,
-    MeasureElapsed_s: r.measure_elapsed_s,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-  // MAX L (RAW)
-  appendSheetFromJson(wb, "MAX_L_RAW", MAX_L.rawReceivedData.map(r=>({
-    IR_Value: r.irValue, RED_Value: r.redValue,
-    SensorElapsed_ms: r.sensor_elapsed_ms,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-  // MLX R (Rawデータ統合)
-  appendSheetFromJson(wb, "MLX_R", MLX_R.receivedData.map(r=>({
-    Ambient_C: r.amb, Object_C: r.obj,
-    Raw_Ambient: r.rawAmbient, // Rawデータ追加
-    Raw_Object: r.rawObject, // Rawデータ追加
-    SensorElapsed_ms: r.sensor_elapsed_ms, SensorElapsed_s: r.sensor_elapsed_s,
-    MeasureElapsed_s: r.measure_elapsed_s,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-  // MLX L (Rawデータ統合)
-  appendSheetFromJson(wb, "MLX_L", MLX_L.receivedData.map(r=>({
-    Ambient_C: r.amb, Object_C: r.obj,
-    Raw_Ambient: r.rawAmbient, // Rawデータ追加
-    Raw_Object: r.rawObject, // Rawデータ追加
-    SensorElapsed_ms: r.sensor_elapsed_ms, SensorElapsed_s: r.sensor_elapsed_s,
-    MeasureElapsed_s: r.measure_elapsed_s,
-    RecvEpoch_ms: r.recv_epoch_ms, RecvJST: r.recv_jst
-  })));
-
-  const filename = "MLX_MAX_2.xlsx";
-  XLSX.writeFile(wb, filename);
+  
+  // シート名はデバイス名 or デフォルトIDを使用
+  appendSheet(wb, devices['max1'].name || 'MAX1', devices['max1'].data, 'MAX');
+  appendSheet(wb, devices['max2'].name || 'MAX2', devices['max2'].data, 'MAX');
+  appendSheet(wb, devices['mlx1'].name || 'MLX1', devices['mlx1'].data, 'MLX');
+  appendSheet(wb, devices['mlx2'].name || 'MLX2', devices['mlx2'].data, 'MLX');
+  
+  XLSX.writeFile(wb, "VitSence_4Dev_Measurement.xlsx");
 });
-
-// 初期化
-updateUnifiedButtons();
