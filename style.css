@@ -1,95 +1,175 @@
 html {
-    scroll-behavior: smooth;
+  scroll-behavior: smooth;
 }
 
 body {
   font-family: 'Segoe UI', sans-serif;
-  font-size: clamp(14px, 1.6vw, 16px); /* 画面幅に応じて可変 */
+  font-size: clamp(14px, 1.6vw, 16px);
   margin: 1rem;
   background-color: rgb(241, 241, 226);
   color: #333;
 }
 
 h1 {
-  font-style: bold;
   color: #46a15f;
+  font-weight: 700;
+}
+
+/* =========================
+   全体コントロール
+========================= */
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 1rem 0;
 }
 
 .controls {
-  margin-bottom: 1.5em;
-  display: flex; 
-  gap: 8px; 
+  display: flex;
   flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 0.5rem;
+  align-items: center;
 }
 
+/* =========================
+   ボタン
+========================= */
+
 button {
-  padding: 0.6em 1em;
-  margin-right: 0.8em;
-  margin-bottom: 0.8em;
+  padding: 0.5em 1em;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background-color: #46a15f;
   color: #fff;
   font-size: 1em;
   cursor: pointer;
 }
 
-button:hover { 
-  background-color: #005fa3; 
+button:hover:not(:disabled) {
+  background-color: #005fa3;
 }
 
-#max-chartContainer, #mlx-chartContainer{
-  border: 1px solid #ddd; 
-  border-radius: 10px; 
-  padding: 12px; 
-  margin: 1em 0; 
+button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* =========================
+   デバイス選択
+========================= */
+
+select.device-select {
+  padding: 0.4em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  max-width: 100%;
+  font-size: 1em;
+}
+
+/* =========================
+   レイアウト
+========================= */
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 1000px) {
+  .grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.subgrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+  margin-bottom: 1rem;
+}
+
+/* スマホなど画面幅が狭い場合は，左右デバイスを縦並びにする */
+@media (max-width: 700px) {
+  .subgrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* =========================
+   パネル
+========================= */
+
+.panel {
+  background-color: #ffffff;
+  padding: 1.5rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.section-title {
+  margin-top: 0;
+  border-bottom: 2px solid #46a15f;
+  padding-bottom: 0.5rem;
+  color: #333;
+}
+
+/* =========================
+   デバイスボックス
+========================= */
+
+.box {
+  background: #f9f9f9;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #eee;
+}
+
+.box h3 {
+  margin: 0 0 10px 0;
+  font-size: 1.1em;
+  color: #555;
+}
+
+/* =========================
+   データ表示
+========================= */
+
+.row {
+  font-size: 0.9em;
+  margin: 3px 0;
+}
+
+.val {
+  font-variant-numeric: tabular-nums;
+  font-weight: bold;
+}
+
+.tiny-muted {
+  font-size: 0.8em;
+  color: #777;
+  margin-top: 5px;
+}
+
+/* =========================
+   グラフ
+========================= */
+
+#max-chartContainer,
+#mlx-chartContainer {
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 12px;
+  margin: 1em 0;
   font-size: 0.8em;
 }
 
-.row { 
-  margin: 6px 0; 
-}
-
-.val { 
-  font-variant-numeric: tabular-nums; 
-}
-
-.grid { 
-  display: grid; 
-  grid-template-columns: 1fr; 
-  gap: 20px; 
-}
-
-select.device-select {
-  padding: 0.5em;
-  margin-right: 0.5em;
-  margin-bottom: 0.4em;
-  border: 1px solid #bbbbbb;
-  border-radius: 4px;
-  font-size: 1em;
-  background-color: #e3fde7;
-}
-
-/* コンテナ: 強制的に横並び（2列）にする */
-.device-container {
-  display: grid;
-  grid-template-columns: 1fr 1fr; /* 1:1 の比率で横並び */
-  gap: 15px; /* パネル間の隙間 */
-  margin-top: 1rem;
-}
-
-/* パネル: 背景を白にする */
-.device-panel {
-  background-color: #ffffff;
-  padding: 1rem 1.5rem;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
-}
-
-/* 画面が極端に狭い場合（スマホなど）のみ縦並びに戻す */
-@media (max-width: 768px) {
-  .device-container {
-    grid-template-columns: 1fr;
-  }
+canvas {
+  max-height: 360px;
 }

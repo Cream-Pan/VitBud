@@ -1,0 +1,58 @@
+{
+  "app": {
+    "name": "VitSense",
+    "version": "0.2.0",
+    "requireAllDevices": true
+  },
+  "sensors": {
+    "MAX": {
+      "serviceUUID": "3a5197ff-07ce-499e-8d37-d3d457af549a",
+      "characteristicUUID": "abcdef01-1234-5678-1234-56789abcdef1",
+      "sampleByteSize": 12,
+      "plotCount": 100,
+      "distanceIrThreshold": 50000,
+      "deviceNames": [
+        "MAX R",
+        "MAX R mini",
+        "MAX L",
+        "MAX L mini",
+        "MAX fin",
+        "MAX bub"
+      ]
+    },
+    "MLX": {
+      "serviceUUID": "4a5197ff-07ce-499e-8d37-d3d457af549a",
+      "characteristicUUID": "fedcba98-7654-3210-fedc-ba9876543210",
+      "sampleByteSize": 16,
+      "plotCount": 50,
+      "deviceNames": [
+        "MLX R",
+        "MLX R mini",
+        "MLX L",
+        "MLX L mini"
+      ]
+    }
+  },
+  "slots": {
+    "max1": {
+      "type": "MAX",
+      "label": "デバイス 1",
+      "defaultRole": "MAX R"
+    },
+    "max2": {
+      "type": "MAX",
+      "label": "デバイス 2",
+      "defaultRole": "MAX L"
+    },
+    "mlx1": {
+      "type": "MLX",
+      "label": "デバイス 3",
+      "defaultRole": "MLX R"
+    },
+    "mlx2": {
+      "type": "MLX",
+      "label": "デバイス 4",
+      "defaultRole": "MLX L"
+    }
+  }
+}

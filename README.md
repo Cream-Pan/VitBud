@@ -153,4 +153,3 @@ sequenceDiagram
 - デバイス名は Arduino 側で「MAX R」「MAX L」「MLX R」「MLX L」と設定すること
 - 4台すべて接続されないと計測は開始できない
 - データ保存はブラウザ上のみ（サーバ通信なし）
-

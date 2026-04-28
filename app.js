@@ -1,27 +1,74 @@
 // ===== 設定 =====
-const MAX_SERVICE_UUID = "3a5197ff-07ce-499e-8d37-d3d457af549a";
-const MAX_RAW_CHARACTERISTIC_UUID = "abcdef01-1234-5678-1234-56789abcdef1";
-const MAX_SAMPLE_BYTE_SIZE = 12;
-const MAX_DEVICE_NAMES = ['MAX R', 'MAX R mini', 'MAX L', 'MAX L mini', 'MAX fin', 'MAX bub'];
-const MAX_PLOT_COUNT = 100; 
+let CONFIG = null;
 
-const MLX_SERVICE_UUID = "4a5197ff-07ce-499e-8d37-d3d457af549a";
-const MLX_CHARACTERISTIC_UUID = "fedcba98-7654-3210-fedc-ba9876543210";
-const MLX_SAMPLE_BYTE_SIZE = 16;
-const MLX_DEVICE_NAMES = ['MLX R', 'MLX R mini', 'MLX L', 'MLX L mini'];
-const MLX_PLOT_COUNT = 50; 
+async function loadConfig() {
+  const res = await fetch("./config.json");
+  if (!res.ok) {
+    throw new Error(`config.json の読み込みに失敗しました: ${res.status}`);
+  }
+  CONFIG = await res.json();
+}
+
+function sensorConfig(type) {
+  return CONFIG.sensors[type];
+}
+
+function sampleByteSize(type) {
+  return CONFIG.sensors[type].sampleByteSize;
+}
+
+function plotCount(type) {
+  return CONFIG.sensors[type].plotCount;
+}
+
+function distanceIrThreshold() {
+  return CONFIG.sensors.MAX.distanceIrThreshold;
+}
+
+function requireAllDevices() {
+  return CONFIG.app.requireAllDevices;
+}
+
+function applySlotConfig() {
+  Object.keys(devices).forEach(id => {
+    const dev = devices[id];
+    const slot = CONFIG.slots[id];
+    if (!slot) return;
+
+    if (dev.ui.title) {
+      dev.ui.title.textContent = `${slot.label} (${slot.defaultRole})`;
+    }
+
+    if (dev.ui.select && slot.defaultRole) {
+      dev.ui.select.value = slot.defaultRole;
+    }
+  });
+}
+
+function applyAppConfig() {
+  const appName = CONFIG.app.name || "VitSense";
+  const version = CONFIG.app.version || "";
+
+  document.title = `${appName} (${version})`;
+
+  const titleEl = document.getElementById("app-title");
+  if (titleEl) {
+    titleEl.textContent = `${appName} (MAX/MLX 4台統合計測)`;
+  }
+}
 
 // ===== デバイス管理オブジェクト (4台構成) =====
 const devices = {
-  // MAX 1 (旧 MAX R 相当)
+  // MAX 1
   "max1": {
     type: 'MAX',
     name: '',
-    serviceUUID: MAX_SERVICE_UUID,
-    charUUID: MAX_RAW_CHARACTERISTIC_UUID,
+    serviceUUID: null,
+    charUUID: null,
     device: null, characteristic: null, measureStartEpochMs: null,
     data: [], buffer: new Uint8Array(), eventHandler: null,
     ui: {
+      title: document.getElementById("max1-title"),
       select: document.getElementById("max1-select"),
       connect: document.getElementById("max1-connect"),
       disconnect: document.getElementById("max1-disconnect"),
@@ -31,15 +78,16 @@ const devices = {
       distanceStatus: document.getElementById("max1-distanceStatus"),
     }
   },
-  // MAX 2 (旧 MAX L 相当)
+  // MAX 2
   "max2": {
     type: 'MAX',
     name: '',
-    serviceUUID: MAX_SERVICE_UUID,
-    charUUID: MAX_RAW_CHARACTERISTIC_UUID,
+    serviceUUID: null,
+    charUUID: null,
     device: null, characteristic: null, measureStartEpochMs: null,
     data: [], buffer: new Uint8Array(), eventHandler: null,
     ui: {
+      title: document.getElementById("max2-title"),
       select: document.getElementById("max2-select"),
       connect: document.getElementById("max2-connect"),
       disconnect: document.getElementById("max2-disconnect"),
@@ -49,15 +97,16 @@ const devices = {
       distanceStatus: document.getElementById("max2-distanceStatus"),
     }
   },
-  // MLX 1 (旧 MLX R 相当)
+  // MLX 1
   "mlx1": {
     type: 'MLX',
     name: '',
-    serviceUUID: MLX_SERVICE_UUID,
-    charUUID: MLX_CHARACTERISTIC_UUID,
+    serviceUUID: null,
+    charUUID: null,
     device: null, characteristic: null, measureStartEpochMs: null,
     data: [], buffer: new Uint8Array(), eventHandler: null,
     ui: {
+      title: document.getElementById("mlx1-title"),
       select: document.getElementById("mlx1-select"),
       connect: document.getElementById("mlx1-connect"),
       disconnect: document.getElementById("mlx1-disconnect"),
@@ -68,15 +117,16 @@ const devices = {
       objValue: document.getElementById("mlx1-objValue"),
     }
   },
-  // MLX 2 (旧 MLX L 相当)
+  // MLX 2
   "mlx2": {
     type: 'MLX',
     name: '',
-    serviceUUID: MLX_SERVICE_UUID,
-    charUUID: MLX_CHARACTERISTIC_UUID,
+    serviceUUID: null,
+    charUUID: null,
     device: null, characteristic: null, measureStartEpochMs: null,
     data: [], buffer: new Uint8Array(), eventHandler: null,
     ui: {
+      title: document.getElementById("mlx2-title"),
       select: document.getElementById("mlx2-select"),
       connect: document.getElementById("mlx2-connect"),
       disconnect: document.getElementById("mlx2-disconnect"),
@@ -95,26 +145,50 @@ const downloadAllBtn = document.getElementById("download-all");
 
 // ===== 初期化処理 (プルダウン生成) =====
 function init() {
-  // MAXプルダウン
-  const maxNames = MAX_DEVICE_NAMES;
+  ['max1', 'max2', 'mlx1', 'mlx2'].forEach(id => {
+    const dev = devices[id];
+    const cfg = sensorConfig(dev.type);
+
+    dev.serviceUUID = cfg.serviceUUID;
+    dev.charUUID = cfg.characteristicUUID;
+    dev.ui.select.innerHTML = "";
+  });
+
+  const maxNames = sensorConfig('MAX').deviceNames;
   ['max1', 'max2'].forEach(id => {
     maxNames.forEach(name => {
       const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
+      opt.value = name;
+      opt.textContent = name;
       devices[id].ui.select.appendChild(opt);
     });
   });
-  // MLXプルダウン
-  const mlxNames = MLX_DEVICE_NAMES;
+
+  const mlxNames = sensorConfig('MLX').deviceNames;
   ['mlx1', 'mlx2'].forEach(id => {
     mlxNames.forEach(name => {
       const opt = document.createElement('option');
-      opt.value = name; opt.textContent = name;
+      opt.value = name;
+      opt.textContent = name;
       devices[id].ui.select.appendChild(opt);
     });
   });
+
+  applySlotConfig();
+  applyAppConfig();
 }
-init();
+
+async function bootstrap() {
+  try {
+    await loadConfig();
+    init();
+  } catch (e) {
+    console.error("config.json の読み込みに失敗しました:", e);
+    alert("config.json の読み込みに失敗しました．ローカルサーバ経由で開いているか確認してください．");
+  }
+}
+
+bootstrap();
 
 // ===== ユーティリティ =====
 function formatLocalTimeWithMs(epochMs) {
@@ -181,14 +255,14 @@ function ensureCharts() {
 function updateMaxChartData(id, elapsedS, ir, red) {
   if (!maxChart) ensureCharts();
   const ds = maxChart.data.datasets;
-  // max1 -> index 0, 1 / max2 -> index 2, 3
   const baseIdx = (id === 'max1') ? 0 : 2;
+  const maxPts = plotCount('MAX');
   
   ds[baseIdx].data.push({ x: elapsedS, y: ir });
   ds[baseIdx + 1].data.push({ x: elapsedS, y: red });
 
   // データ数制限
-  if (ds[baseIdx].data.length > MAX_PLOT_COUNT) {
+  if (ds[baseIdx].data.length > maxPts) {
     ds[baseIdx].data.shift();
     ds[baseIdx + 1].data.shift();
   }
@@ -198,12 +272,12 @@ function updateMaxChartData(id, elapsedS, ir, red) {
 function updateMlxChartData(id, elapsedS, obj) {
   if (!mlxChart) ensureCharts();
   const ds = mlxChart.data.datasets;
-  // mlx1 -> index 0 / mlx2 -> index 1
   const idx = (id === 'mlx1') ? 0 : 1;
+  const maxPts = plotCount('MLX');
   
   ds[idx].data.push({ x: elapsedS, y: obj });
 
-  if (ds[idx].data.length > MLX_PLOT_COUNT) {
+  if (ds[idx].data.length > maxPts) {
     ds[idx].data.shift();
   }
   mlxChart.update('none');
@@ -236,14 +310,15 @@ function handleMaxNotification(event, id) {
   const dev = devices[id];
   if (dev.measureStartEpochMs === null) { dev.buffer = new Uint8Array(); return; }
 
+  const byteSize = sampleByteSize('MAX');
   const newData = new Uint8Array(event.target.value.buffer);
   const combined = new Uint8Array(dev.buffer.length + newData.length);
   combined.set(dev.buffer);
   combined.set(newData, dev.buffer.length);
   dev.buffer = combined;
 
-  while (dev.buffer.length >= MAX_SAMPLE_BYTE_SIZE) {
-    const sampleView = new DataView(dev.buffer.buffer, 0, MAX_SAMPLE_BYTE_SIZE);
+  while (dev.buffer.length >= byteSize) {
+    const sampleView = new DataView(dev.buffer.buffer, 0, byteSize);
     const irValue = sampleView.getUint32(0, true);
     const redValue = sampleView.getUint32(4, true);
     const sensorElapsedMs = sampleView.getUint32(8, true);
@@ -254,7 +329,7 @@ function handleMaxNotification(event, id) {
     const measureElapsedS = (recvEpochMs - dev.measureStartEpochMs) / 1000;
 
     // 距離判定
-    if (irValue < 50000) {
+    if (irValue < distanceIrThreshold()) {
       dev.ui.distanceStatus.textContent = "離れています";
       dev.ui.distanceStatus.style.color = "#d00";
     } else {
@@ -271,10 +346,12 @@ function handleMaxNotification(event, id) {
       measure_elapsed_s: measureElapsedS
     });
 
+    if (downloadAllBtn.disabled) updateUnifiedButtons();
+
     dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
     updateMaxChartData(id, measureElapsedS, irValue, redValue);
 
-    dev.buffer = dev.buffer.slice(MAX_SAMPLE_BYTE_SIZE);
+    dev.buffer = dev.buffer.slice(byteSize);
   }
 }
 
@@ -282,7 +359,7 @@ function handleMlxNotification(event, id) {
   const dev = devices[id];
   if (dev.measureStartEpochMs === null) return;
   const v = event.target.value;
-  if (v.byteLength !== MLX_SAMPLE_BYTE_SIZE) return;
+  if (v.byteLength !== sampleByteSize('MLX')) return;
 
   const recvEpochMs = Date.now();
   const amb = v.getFloat32(0, true);
@@ -305,10 +382,11 @@ function handleMlxNotification(event, id) {
   dev.data.push({
     amb, obj, rawAmbient, rawObject,
     sensor_elapsed_ms: sensorElapsedMs,
-    sensor_elapsed_s: sensorElapsedS,
+    measure_elapsed_s: measureElapsedS,
     recv_epoch_ms: recvEpochMs,
     recv_jst: formatLocalTimeWithMs(recvEpochMs)
   });
+  if (downloadAllBtn.disabled) updateUnifiedButtons();
 }
 
 // ===== 接続・切断ロジック =====
@@ -360,7 +438,8 @@ async function connectDevice(id) {
       if(dev.eventHandler) {
          try{ dev.characteristic.removeEventListener('characteristicvaluechanged', dev.eventHandler); }catch{}
       }
-      clearDeviceData(id);
+      dev.buffer = new Uint8Array();
+      dev.measureStartEpochMs = null;
       updateUnifiedButtons();
     });
 
@@ -391,8 +470,12 @@ Object.keys(devices).forEach(id => {
 
 // ===== 統合制御 (計測開始・停止) =====
 function allConnected() {
-  // 4台すべて接続されているかチェック (必要に応じて条件を緩めてもOK)
-  return Object.values(devices).every(d => d.device && d.device.gatt.connected);
+  const connectedDevices = Object.values(devices).filter(d => d.device && d.device.gatt.connected);
+  if (requireAllDevices()) {
+    return connectedDevices.length === Object.keys(devices).length;
+  }
+ 
+  return connectedDevices.length > 0;
 }
 
 function updateUnifiedButtons() {
@@ -464,7 +547,7 @@ function appendSheet(wb, name, data, type) {
       Raw_Ambient: r.rawAmbient,
       Raw_Object: r.rawObject,
       SensorElapsed_ms: r.sensor_elapsed_ms,
-      SensorElapsed_s: r.sensor_elapsed_s,
+      MeasureElapsed_s: r.measure_elapsed_s,
       // MeasureElapsed_s は削除
       RecvEpoch_ms: r.recv_epoch_ms,
       RecvJST: r.recv_jst
