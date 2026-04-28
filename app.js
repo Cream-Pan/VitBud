@@ -2,7 +2,7 @@
 const MAX_SERVICE_UUID = "3a5197ff-07ce-499e-8d37-d3d457af549a";
 const MAX_RAW_CHARACTERISTIC_UUID = "abcdef01-1234-5678-1234-56789abcdef1";
 const MAX_SAMPLE_BYTE_SIZE = 12;
-const MAX_DEVICE_NAMES = ['MAX R', 'MAX R mini', 'MAX L', 'MAX L mini'];
+const MAX_DEVICE_NAMES = ['MAX R', 'MAX R mini', 'MAX L', 'MAX L mini', 'MAX fin', 'MAX bub'];
 const MAX_PLOT_COUNT = 100; 
 
 const MLX_SERVICE_UUID = "4a5197ff-07ce-499e-8d37-d3d457af549a";
