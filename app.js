@@ -250,6 +250,7 @@ function createDeviceChart(dev) {
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         animation: { duration: 0 },
         scales: {
           x: {
@@ -288,6 +289,7 @@ function createDeviceChart(dev) {
       },
       options: {
         responsive: true,
+        maintainAspectRatio: false,
         animation: { duration: 0 },
         scales: {
           x: {
