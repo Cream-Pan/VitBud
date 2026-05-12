@@ -424,7 +424,7 @@ flowchart LR
 
 ### 1．WebAppを開く
 
-VercelなどにデプロイしたURLを開く．
+URLを開く．
 ローカルで確認する場合は，`config.json` を `fetch()` で読み込むため，`index.html` を直接ダブルクリックせず，ローカルサーバ経由で開く．
 
 例：
