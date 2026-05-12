@@ -29,20 +29,16 @@ function requireAllDevices() {
   return CONFIG.app.requireAllDevices;
 }
 
-function applySlotConfig() {
-  Object.keys(devices).forEach(id => {
-    const dev = devices[id];
-    const slot = CONFIG.slots[id];
-    if (!slot) return;
+function maxDevicesPerSensor() {
+  return CONFIG.app.maxDevicesPerSensor ?? 5;
+}
 
-    if (dev.ui.title) {
-      dev.ui.title.textContent = `${slot.label} (${slot.defaultRole})`;
-    }
+function isMeasuring() {
+  return measureAllBtn.textContent.includes("停止");
+}
 
-    if (dev.ui.select && slot.defaultRole) {
-      dev.ui.select.value = slot.defaultRole;
-    }
-  });
+function activeDevices(type = null) {
+  return Object.values(devices).filter(dev => !type || dev.type === type);
 }
 
 function applyAppConfig() {
@@ -57,86 +53,26 @@ function applyAppConfig() {
   }
 }
 
-// ===== デバイス管理オブジェクト (4台構成) =====
-const devices = {
-  // MAX 1
-  "max1": {
-    type: 'MAX',
-    name: '',
-    serviceUUID: null,
-    charUUID: null,
-    device: null, characteristic: null, measureStartEpochMs: null,
-    data: [], buffer: new Uint8Array(), eventHandler: null,
-    ui: {
-      title: document.getElementById("max1-title"),
-      select: document.getElementById("max1-select"),
-      connect: document.getElementById("max1-connect"),
-      disconnect: document.getElementById("max1-disconnect"),
-      status: document.getElementById("max1-status"),
-      deviceName: document.getElementById("max1-deviceName"),
-      timeValue: document.getElementById("max1-timeValue"),
-      distanceStatus: document.getElementById("max1-distanceStatus"),
-    }
-  },
-  // MAX 2
-  "max2": {
-    type: 'MAX',
-    name: '',
-    serviceUUID: null,
-    charUUID: null,
-    device: null, characteristic: null, measureStartEpochMs: null,
-    data: [], buffer: new Uint8Array(), eventHandler: null,
-    ui: {
-      title: document.getElementById("max2-title"),
-      select: document.getElementById("max2-select"),
-      connect: document.getElementById("max2-connect"),
-      disconnect: document.getElementById("max2-disconnect"),
-      status: document.getElementById("max2-status"),
-      deviceName: document.getElementById("max2-deviceName"),
-      timeValue: document.getElementById("max2-timeValue"),
-      distanceStatus: document.getElementById("max2-distanceStatus"),
-    }
-  },
-  // MLX 1
-  "mlx1": {
-    type: 'MLX',
-    name: '',
-    serviceUUID: null,
-    charUUID: null,
-    device: null, characteristic: null, measureStartEpochMs: null,
-    data: [], buffer: new Uint8Array(), eventHandler: null,
-    ui: {
-      title: document.getElementById("mlx1-title"),
-      select: document.getElementById("mlx1-select"),
-      connect: document.getElementById("mlx1-connect"),
-      disconnect: document.getElementById("mlx1-disconnect"),
-      status: document.getElementById("mlx1-status"),
-      deviceName: document.getElementById("mlx1-deviceName"),
-      timeValue: document.getElementById("mlx1-timeValue"),
-      ambValue: document.getElementById("mlx1-ambValue"),
-      objValue: document.getElementById("mlx1-objValue"),
-    }
-  },
-  // MLX 2
-  "mlx2": {
-    type: 'MLX',
-    name: '',
-    serviceUUID: null,
-    charUUID: null,
-    device: null, characteristic: null, measureStartEpochMs: null,
-    data: [], buffer: new Uint8Array(), eventHandler: null,
-    ui: {
-      title: document.getElementById("mlx2-title"),
-      select: document.getElementById("mlx2-select"),
-      connect: document.getElementById("mlx2-connect"),
-      disconnect: document.getElementById("mlx2-disconnect"),
-      status: document.getElementById("mlx2-status"),
-      deviceName: document.getElementById("mlx2-deviceName"),
-      timeValue: document.getElementById("mlx2-timeValue"),
-      ambValue: document.getElementById("mlx2-ambValue"),
-      objValue: document.getElementById("mlx2-objValue"),
-    }
-  }
+// ===== デバイス管理 =====
+const devices = {};
+const deviceCounters = {
+  MAX: 0,
+  MLX: 0
+};
+
+const addButtons = {
+  MAX: document.getElementById("add-max-device"),
+  MLX: document.getElementById("add-mlx-device")
+};
+
+const deviceLists = {
+  MAX: document.getElementById("max-device-list"),
+  MLX: document.getElementById("mlx-device-list")
+};
+
+const countLabels = {
+  MAX: document.getElementById("max-count"),
+  MLX: document.getElementById("mlx-count")
 };
 
 // ===== グローバルUI =====
@@ -145,37 +81,120 @@ const downloadAllBtn = document.getElementById("download-all");
 
 // ===== 初期化処理 (プルダウン生成) =====
 function init() {
-  ['max1', 'max2', 'mlx1', 'mlx2'].forEach(id => {
-    const dev = devices[id];
-    const cfg = sensorConfig(dev.type);
-
-    dev.serviceUUID = cfg.serviceUUID;
-    dev.charUUID = cfg.characteristicUUID;
-    dev.ui.select.innerHTML = "";
-  });
-
-  const maxNames = sensorConfig('MAX').deviceNames;
-  ['max1', 'max2'].forEach(id => {
-    maxNames.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      devices[id].ui.select.appendChild(opt);
-    });
-  });
-
-  const mlxNames = sensorConfig('MLX').deviceNames;
-  ['mlx1', 'mlx2'].forEach(id => {
-    mlxNames.forEach(name => {
-      const opt = document.createElement('option');
-      opt.value = name;
-      opt.textContent = name;
-      devices[id].ui.select.appendChild(opt);
-    });
-  });
-
-  applySlotConfig();
   applyAppConfig();
+
+  addButtons.MAX.addEventListener("click", () => createDeviceBox("MAX"));
+  addButtons.MLX.addEventListener("click", () => createDeviceBox("MLX"));
+
+  updateUnifiedButtons();
+}
+
+function createDeviceBox(type) {
+  if (activeDevices(type).length >= maxDevicesPerSensor()) {
+    alert(`${type} デバイスは最大 ${maxDevicesPerSensor()} 台までです．`);
+    return;
+  }
+
+  deviceCounters[type] += 1;
+
+  const prefix = type.toLowerCase();
+  const id = `${prefix}${deviceCounters[type]}`;
+  const displayNo = activeDevices(type).length + 1;
+  const cfg = sensorConfig(type);
+
+  const box = document.createElement("div");
+  box.className = "box";
+  box.id = `${id}-box`;
+
+  if (type === "MAX") {
+    box.innerHTML = `
+      <div class="box-header">
+        <h3 id="${id}-title">MAX デバイス ${displayNo}</h3>
+        <button id="${id}-close" class="close-device-btn">×</button>
+      </div>
+      <div class="controls">
+        <select id="${id}-select" class="device-select"></select>
+        <button id="${id}-connect">接続</button>
+        <button id="${id}-disconnect" disabled>解除</button>
+      </div>
+      <div class="row">状態: <span id="${id}-status">未接続</span></div>
+      <div class="row">名前: <span id="${id}-deviceName">-</span></div>
+      <div class="row">時間: <span id="${id}-timeValue" class="val">-</span> s</div>
+      <div class="row">距離: <span id="${id}-distanceStatus">-</span></div>
+      <div class="device-chart-container">
+        <canvas id="${id}-chart"></canvas>
+      </div>
+    `;
+  } else {
+    box.innerHTML = `
+      <div class="box-header">
+        <h3 id="${id}-title">MLX デバイス ${displayNo}</h3>
+        <button id="${id}-close" class="close-device-btn">×</button>
+      </div>
+      <div class="controls">
+        <select id="${id}-select" class="device-select"></select>
+        <button id="${id}-connect">接続</button>
+        <button id="${id}-disconnect" disabled>解除</button>
+      </div>
+      <div class="row">状態: <span id="${id}-status">未接続</span></div>
+      <div class="row">名前: <span id="${id}-deviceName">-</span></div>
+      <div class="row">Amb: <span id="${id}-ambValue" class="val">-</span> °C</div>
+      <div class="row">Obj: <span id="${id}-objValue" class="val">-</span> °C</div>
+      <div class="row">時間: <span id="${id}-timeValue" class="val">-</span> s</div>
+      <div class="device-chart-container">
+        <canvas id="${id}-chart"></canvas>
+      </div>
+    `;
+  }
+
+  deviceLists[type].appendChild(box);
+
+  const dev = {
+    id,
+    type,
+    name: "",
+    serviceUUID: cfg.serviceUUID,
+    charUUID: cfg.characteristicUUID,
+    device: null,
+    characteristic: null,
+    measureStartEpochMs: null,
+    data: [],
+    buffer: new Uint8Array(),
+    eventHandler: null,
+    chart: null,
+    ui: {
+      box,
+      title: document.getElementById(`${id}-title`),
+      close: document.getElementById(`${id}-close`),
+      select: document.getElementById(`${id}-select`),
+      connect: document.getElementById(`${id}-connect`),
+      disconnect: document.getElementById(`${id}-disconnect`),
+      status: document.getElementById(`${id}-status`),
+      deviceName: document.getElementById(`${id}-deviceName`),
+      timeValue: document.getElementById(`${id}-timeValue`),
+      distanceStatus: document.getElementById(`${id}-distanceStatus`),
+      ambValue: document.getElementById(`${id}-ambValue`),
+      objValue: document.getElementById(`${id}-objValue`),
+      chartCanvas: document.getElementById(`${id}-chart`)
+    }
+  };
+
+  cfg.deviceNames.forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    dev.ui.select.appendChild(opt);
+  });
+
+  devices[id] = dev;
+
+  createDeviceChart(dev);
+
+  dev.ui.connect.addEventListener("click", () => connectDevice(id));
+  dev.ui.disconnect.addEventListener("click", () => disconnectDevice(id));
+  dev.ui.close.addEventListener("click", () => removeDeviceBox(id));
+
+  updateUnifiedButtons();
 }
 
 async function bootstrap() {
@@ -198,89 +217,159 @@ function formatLocalTimeWithMs(epochMs) {
        + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}.${pad(d.getMilliseconds(),3)}`;
 }
 
-// ===== チャート管理 =====
-let maxChart = null;
-let mlxChart = null;
+// ===== デバイス別チャート管理 =====
+function createDeviceChart(dev) {
+  const ctx = dev.ui.chartCanvas.getContext("2d");
 
-function ensureCharts() {
-  // MAXチャート (IR/RED × 2台分 = 4本)
-  if (!maxChart) {
-    const ctx = document.getElementById("max-realtimeChart").getContext("2d");
-    maxChart = new Chart(ctx, {
+  if (dev.type === "MAX") {
+    dev.chart = new Chart(ctx, {
       type: "line",
       data: {
         datasets: [
-          // Device 1 (実線)
-          { label: "IR (Dev1)", data: [], yAxisID: 'y-ir', borderColor: "rgba(75, 192, 192, 1)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
-          { label: "RED (Dev1)", data: [], yAxisID: 'y-red', borderColor: "rgba(255, 99, 132, 1)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
-          // Device 2 (点線)
-          { label: "IR (Dev2)", data: [], yAxisID: 'y-ir', borderColor: "rgba(75, 192, 192, 0.6)", borderWidth: 2, borderDash: [5, 5], fill:false, pointRadius:0, tension:0.2 },
-          { label: "RED (Dev2)", data: [], yAxisID: 'y-red', borderColor: "rgba(255, 99, 132, 0.6)", borderWidth: 2, borderDash: [5, 5], fill:false, pointRadius:0, tension:0.2 }
+          {
+            label: "IR",
+            data: [],
+            yAxisID: "y-ir",
+            borderColor: "rgba(75, 192, 192, 1)",
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            tension: 0.2
+          },
+          {
+            label: "RED",
+            data: [],
+            yAxisID: "y-red",
+            borderColor: "rgba(255, 99, 132, 1)",
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            tension: 0.2
+          }
         ]
       },
       options: {
-        responsive: true, animation: { duration: 0 },
+        responsive: true,
+        animation: { duration: 0 },
         scales: {
-          x: { type: 'linear', title: { display: true, text: '経過時間 (s)' } },
-          'y-ir': { type: 'linear', position: 'left', title: { display: true, text: 'IR Value', color: 'rgb(75, 192, 192)' }, ticks: { color: 'rgb(75, 192, 192)' } },
-          'y-red': { type: 'linear', position: 'right', title: { display: true, text: 'RED Value', color: 'rgb(255, 99, 132)' }, ticks: { color: 'rgb(255, 99, 132)' }, grid: { drawOnChartArea: false } }
+          x: {
+            type: "linear",
+            title: { display: true, text: "経過時間 (s)" }
+          },
+          "y-ir": {
+            type: "linear",
+            position: "left",
+            title: { display: true, text: "IR Value" }
+          },
+          "y-red": {
+            type: "linear",
+            position: "right",
+            title: { display: true, text: "RED Value" },
+            grid: { drawOnChartArea: false }
+          }
+        }
+      }
+    });
+  } else {
+    dev.chart = new Chart(ctx, {
+      type: "line",
+      data: {
+        datasets: [
+          {
+            label: "Object (°C)",
+            data: [],
+            borderColor: "rgb(54, 162, 235)",
+            borderWidth: 2,
+            fill: false,
+            pointRadius: 0,
+            tension: 0.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        animation: { duration: 0 },
+        scales: {
+          x: {
+            type: "linear",
+            title: { display: true, text: "経過時間 (s)" }
+          },
+          y: {
+            beginAtZero: false,
+            title: { display: true, text: "Object 温度 (°C)" }
+          }
         }
       }
     });
   }
+}
 
-  // MLXチャート (ObjectTemp × 2台分 = 2本)
-  if (!mlxChart) {
-    const ctx = document.getElementById("mlx-realtimeChart").getContext("2d");
-    mlxChart = new Chart(ctx, {
-      type: "line",
-      data: {
-        datasets: [
-          { label: "Obj (Dev3)", data: [], borderColor: "rgb(54, 162, 235)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 },
-          { label: "Obj (Dev4)", data: [], borderColor: "rgb(255, 99, 132)", borderWidth: 2, fill:false, pointRadius:0, tension:0.2 }
-        ]
-      },
-      options: {
-        responsive: true, animation: { duration: 0 },
-        scales: {
-          x: { type: "linear", title: { display: true, text: "経過時間 (s)" } },
-          y: { beginAtZero: false, title: { display: true, text: "温度 (°C)" } }
-        }
-      }
-    });
+function clearDeviceChart(dev) {
+  if (!dev.chart) return;
+  dev.chart.data.datasets.forEach(ds => {
+    ds.data = [];
+  });
+  dev.chart.update("none");
+}
+
+async function removeDeviceBox(id) {
+  const dev = devices[id];
+  if (!dev) return;
+
+  if (isMeasuring()) {
+    alert("計測中はデバイスBoxを削除できません．計測停止後に削除してください．");
+    return;
   }
+
+  await disconnectDevice(id);
+
+  if (dev.chart) {
+    dev.chart.destroy();
+    dev.chart = null;
+  }
+
+  if (dev.ui.box) {
+    dev.ui.box.remove();
+  }
+
+  delete devices[id];
+  updateUnifiedButtons();
 }
 
 // 共通チャート更新関数
 function updateMaxChartData(id, elapsedS, ir, red) {
-  if (!maxChart) ensureCharts();
-  const ds = maxChart.data.datasets;
-  const baseIdx = (id === 'max1') ? 0 : 2;
-  const maxPts = plotCount('MAX');
-  
-  ds[baseIdx].data.push({ x: elapsedS, y: ir });
-  ds[baseIdx + 1].data.push({ x: elapsedS, y: red });
+  const dev = devices[id];
+  if (!dev || !dev.chart) return;
 
-  // データ数制限
-  if (ds[baseIdx].data.length > maxPts) {
-    ds[baseIdx].data.shift();
-    ds[baseIdx + 1].data.shift();
+  const maxPts = plotCount("MAX");
+  const irDataset = dev.chart.data.datasets[0];
+  const redDataset = dev.chart.data.datasets[1];
+
+  irDataset.data.push({ x: elapsedS, y: ir });
+  redDataset.data.push({ x: elapsedS, y: red });
+
+  if (irDataset.data.length > maxPts) {
+    irDataset.data.shift();
+    redDataset.data.shift();
   }
-  maxChart.update('none');
+
+  dev.chart.update("none");
 }
 
 function updateMlxChartData(id, elapsedS, obj) {
-  if (!mlxChart) ensureCharts();
-  const ds = mlxChart.data.datasets;
-  const idx = (id === 'mlx1') ? 0 : 1;
-  const maxPts = plotCount('MLX');
-  
-  ds[idx].data.push({ x: elapsedS, y: obj });
+  const dev = devices[id];
+  if (!dev || !dev.chart) return;
 
-  if (ds[idx].data.length > maxPts) {
-    ds[idx].data.shift();
+  const maxPts = plotCount("MLX");
+  const dataset = dev.chart.data.datasets[0];
+
+  dataset.data.push({ x: elapsedS, y: obj });
+
+  if (dataset.data.length > maxPts) {
+    dataset.data.shift();
   }
-  mlxChart.update('none');
+
+  dev.chart.update("none");
 }
 
 function clearDeviceData(id) {
@@ -289,7 +378,6 @@ function clearDeviceData(id) {
   dev.buffer = new Uint8Array();
   dev.measureStartEpochMs = null;
   
-  // UIリセット
   dev.ui.timeValue.textContent = "-";
   if (dev.type === 'MAX') dev.ui.distanceStatus.textContent = "-";
   if (dev.type === 'MLX') {
@@ -297,12 +385,13 @@ function clearDeviceData(id) {
     dev.ui.objValue.textContent = "-";
   }
 
-  // チャートクリア (計測開始時に全クリアするため、ここでは個別の消去はしない)
+  clearDeviceChart(dev);
 }
 
 function resetAllCharts() {
-  if (maxChart) { maxChart.data.datasets.forEach(d => d.data = []); maxChart.update(); }
-  if (mlxChart) { mlxChart.data.datasets.forEach(d => d.data = []); mlxChart.update(); }
+  Object.values(devices).forEach(dev => {
+    clearDeviceChart(dev);
+  });
 }
 
 // ===== 通知ハンドラ =====
@@ -389,6 +478,21 @@ function handleMlxNotification(event, id) {
   if (downloadAllBtn.disabled) updateUnifiedButtons();
 }
 
+function updateDeviceChartTitle(dev) {
+  if (!dev.chart) return;
+
+  const labelName = dev.name || dev.id;
+
+  if (dev.type === "MAX") {
+    dev.chart.data.datasets[0].label = `IR (${labelName})`;
+    dev.chart.data.datasets[1].label = `RED (${labelName})`;
+  } else {
+    dev.chart.data.datasets[0].label = `Object (${labelName})`;
+  }
+
+  dev.chart.update("none");
+}
+
 // ===== 接続・切断ロジック =====
 async function connectDevice(id) {
   const dev = devices[id];
@@ -427,6 +531,7 @@ async function connectDevice(id) {
     dev.ui.connect.disabled = true;
     dev.ui.select.disabled = true;
     dev.ui.disconnect.disabled = false;
+    updateDeviceChartTitle(dev);
 
     // 切断時処理
     device.addEventListener('gattserverdisconnected', () => {
@@ -470,21 +575,44 @@ Object.keys(devices).forEach(id => {
 
 // ===== 統合制御 (計測開始・停止) =====
 function allConnected() {
-  const connectedDevices = Object.values(devices).filter(d => d.device && d.device.gatt.connected);
+  const active = Object.values(devices);
+  if (active.length === 0) return false;
+
+  const connectedDevices = active.filter(d => d.device && d.device.gatt.connected);
+
   if (requireAllDevices()) {
-    return connectedDevices.length === Object.keys(devices).length;
+    return connectedDevices.length === active.length;
   }
- 
+
   return connectedDevices.length > 0;
 }
 
 function updateUnifiedButtons() {
+  const active = Object.values(devices);
   const allReady = allConnected();
+  const measuring = isMeasuring();
+
   measureAllBtn.disabled = !allReady;
-  
-  // データが1つでもあればDL可能
-  const hasData = Object.values(devices).some(d => d.data.length > 0);
+
+  const hasData = active.some(d => d.data.length > 0);
   downloadAllBtn.disabled = !hasData;
+
+  const maxCount = activeDevices("MAX").length;
+  const mlxCount = activeDevices("MLX").length;
+  const limit = maxDevicesPerSensor();
+
+  addButtons.MAX.disabled = measuring || maxCount >= limit;
+  addButtons.MLX.disabled = measuring || mlxCount >= limit;
+
+  countLabels.MAX.textContent = `${maxCount} / ${limit}`;
+  countLabels.MLX.textContent = `${mlxCount} / ${limit}`;
+
+  active.forEach(dev => {
+    if (dev.ui.close) dev.ui.close.disabled = measuring;
+    if (dev.ui.select && dev.device?.gatt?.connected) {
+      dev.ui.select.disabled = true;
+    }
+  });
 }
 
 measureAllBtn.addEventListener('click', async () => {
@@ -531,8 +659,9 @@ function formatTimestampForFilename(date = new Date()) {
 
 function sanitizeFilename(name) {
   return String(name)
-    .replace(/[\\/:*?"<>|]/g, "_")
-    .trim();
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[\\/:*?"<>|]/g, "_");
 }
 
 function escapeCsvValue(value) {
@@ -609,7 +738,7 @@ function downloadCsv(deviceName, data, type, timestamp) {
   const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
 
   const safeName = sanitizeFilename(deviceName);
-  const filename = `${safeName}-${timestamp}.csv`;
+  const filename = `${safeName}_${timestamp}.csv`;
 
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -624,16 +753,8 @@ function downloadCsv(deviceName, data, type, timestamp) {
 downloadAllBtn.addEventListener("click", () => {
   const timestamp = formatTimestampForFilename();
 
-  const targets = [
-    { id: "max1", fallbackName: "MAX1", type: "MAX" },
-    { id: "max2", fallbackName: "MAX2", type: "MAX" },
-    { id: "mlx1", fallbackName: "MLX1", type: "MLX" },
-    { id: "mlx2", fallbackName: "MLX2", type: "MLX" }
-  ];
-
-  targets.forEach(target => {
-    const dev = devices[target.id];
-    const deviceName = dev.name || target.fallbackName;
-    downloadCsv(deviceName, dev.data, target.type, timestamp);
+  Object.values(devices).forEach(dev => {
+    const deviceName = dev.name || dev.id.toUpperCase();
+    downloadCsv(deviceName, dev.data, dev.type, timestamp);
   });
 });

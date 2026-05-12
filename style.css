@@ -158,18 +158,56 @@ select.device-select {
 }
 
 /* =========================
-   グラフ
+   動的デバイス操作
 ========================= */
 
-#max-chartContainer,
-#mlx-chartContainer {
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  padding: 12px;
-  margin: 1em 0;
-  font-size: 0.8em;
+.panel-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 1rem 0;
+  flex-wrap: wrap;
 }
 
-canvas {
-  max-height: 360px;
+.add-device-btn {
+  background-color: #46a15f;
+}
+
+.box-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.box-header h3 {
+  margin: 0;
+}
+
+.close-device-btn {
+  background-color: #777;
+  padding: 0.35em 0.65em;
+  font-size: 0.9em;
+}
+
+.close-device-btn:hover:not(:disabled) {
+  background-color: #444;
+}
+
+/* =========================
+   デバイスごとのグラフ
+========================= */
+
+.device-chart-container {
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 8px;
+  margin-top: 0.8rem;
+  background: #fff;
+}
+
+.device-chart-container canvas {
+  width: 100%;
+  max-height: 240px;
 }

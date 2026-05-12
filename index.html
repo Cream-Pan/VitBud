@@ -8,7 +8,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   </head>
   <body>
-    <h1 id="app-title">VitBud (MAX/MLX 4台統合計測)</h1>
+    <h1 id="app-title">VitBud</h1>
     
     <div class="toolbar">
       <button id="measure-all" disabled>計測開始</button>
@@ -18,72 +18,20 @@
     <div class="grid">
       <section class="panel" id="max-panel">
         <h2 class="section-title">MAX センサデータ（心拍・脈波）</h2>
-        <div class="subgrid">
-          <div class="box">
-            <h3 id="max1-title">デバイス 1 (MAX R)</h3>
-            <div class="controls">
-              <select id="max1-select" class="device-select"></select>
-              <button id="max1-connect">接続</button>
-              <button id="max1-disconnect" disabled>解除</button>
-            </div>
-            <div class="row">状態: <span id="max1-status">未接続</span></div>
-            <div class="row">名前: <span id="max1-deviceName">-</span></div>
-            <div class="row">時間: <span id="max1-timeValue" class="val">-</span> s</div>
-            <div class="row">距離: <span id="max1-distanceStatus">-</span></div>
-          </div>
-          <div class="box">
-            <h3 id="max2-title">デバイス 2 (MAX L)</h3>
-            <div class="controls">
-              <select id="max2-select" class="device-select"></select>
-              <button id="max2-connect">接続</button>
-              <button id="max2-disconnect" disabled>解除</button>
-            </div>
-            <div class="row">状態: <span id="max2-status">未接続</span></div>
-            <div class="row">名前: <span id="max2-deviceName">-</span></div>
-            <div class="row">時間: <span id="max2-timeValue" class="val">-</span> s</div>
-            <div class="row">距離: <span id="max2-distanceStatus">-</span></div>
-          </div>
+        <div class="panel-actions">
+          <button id="add-max-device" class="add-device-btn">＋ MAX デバイス追加</button>
+          <span id="max-count" class="tiny-muted">0 / 5</span>
         </div>
-        <div id="max-chartContainer">
-          <canvas id="max-realtimeChart"></canvas>
-          <p class="tiny-muted">実線: デバイス1 (R) / 点線: デバイス2 (L)</p>
-        </div>
+        <div class="subgrid" id="max-device-list"></div>
       </section>
 
       <section class="panel" id="mlx-panel">
         <h2 class="section-title">MLX センサデータ（鼓膜温度）</h2>
-        <div class="subgrid">
-          <div class="box">
-            <h3 id="mlx1-title">デバイス 3 (MLX R)</h3>
-            <div class="controls">
-              <select id="mlx1-select" class="device-select"></select>
-              <button id="mlx1-connect">接続</button>
-              <button id="mlx1-disconnect" disabled>解除</button>
-            </div>
-            <div class="row">状態: <span id="mlx1-status">未接続</span></div>
-            <div class="row">名前: <span id="mlx1-deviceName">-</span></div>
-            <div class="row">Amb: <span id="mlx1-ambValue" class="val">-</span> °C</div>
-            <div class="row">Obj: <span id="mlx1-objValue" class="val">-</span> °C</div>
-            <div class="row">時間: <span id="mlx1-timeValue" class="val">-</span> s</div>
-          </div>
-          <div class="box">
-            <h3 id="mlx2-title">デバイス 4 (MLX L)</h3>
-            <div class="controls">
-              <select id="mlx2-select" class="device-select"></select>
-              <button id="mlx2-connect">接続</button>
-              <button id="mlx2-disconnect" disabled>解除</button>
-            </div>
-            <div class="row">状態: <span id="mlx2-status">未接続</span></div>
-            <div class="row">名前: <span id="mlx2-deviceName">-</span></div>
-            <div class="row">Amb: <span id="mlx2-ambValue" class="val">-</span> °C</div>
-            <div class="row">Obj: <span id="mlx2-objValue" class="val">-</span> °C</div>
-            <div class="row">時間: <span id="mlx2-timeValue" class="val">-</span> s</div>
-          </div>
+        <div class="panel-actions">
+          <button id="add-mlx-device" class="add-device-btn">＋ MLX デバイス追加</button>
+          <span id="mlx-count" class="tiny-muted">0 / 5</span>
         </div>
-        <div id="mlx-chartContainer">
-          <canvas id="mlx-realtimeChart"></canvas>
-          <p class="tiny-muted">Object温度を表示 (青: デバイス3 / 赤: デバイス4)</p>
-        </div>
+        <div class="subgrid" id="mlx-device-list"></div>
       </section>
     </div>
 

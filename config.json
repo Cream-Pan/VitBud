@@ -2,7 +2,8 @@
   "app": {
     "name": "VitBud",
     "version": "0.2.0",
-    "requireAllDevices": true
+    "requireAllDevices": true,
+    "maxDevicesPerSensor": 5
   },
   "sensors": {
     "MAX": {
