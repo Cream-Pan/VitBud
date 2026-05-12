@@ -2,6 +2,11 @@
 
 # VitBud WebApp
 
+VitBud WebApp は，Web Bluetooth を用いて MAX30102 系デバイスと MLX90632 系デバイスをブラウザ上で接続し，脈波データおよび赤外線温度データをリアルタイムに可視化・保存する Web アプリケーションである．
+
+MAX デバイスおよび MLX デバイスは，それぞれ 0〜5 台まで任意に追加できる．追加したデバイスBoxごとに BLE 接続，リアルタイム表示，グラフ表示，CSV保存を行う．  
+デバイス候補名，UUID，サンプルサイズ，グラフ表示点数，距離判定閾値などの設定は `config.json` で管理する．
+
 ---
 
 ## 使用技術一覧
@@ -12,7 +17,7 @@
   <img src="https://img.shields.io/badge/-JavaScript-F7DF1E.svg?logo=javascript&style=for-the-badge&logoColor=black">
   <img src="https://img.shields.io/badge/-Web%20Bluetooth-0082FC.svg?logo=bluetooth&style=for-the-badge&logoColor=white">
   <img src="https://img.shields.io/badge/-Chart.js-FF6384.svg?logo=chartdotjs&style=for-the-badge&logoColor=white">
-  <img src="https://img.shields.io/badge/-SheetJS-217346.svg?style=for-the-badge&logoColor=white">
+  <img src="https://img.shields.io/badge/-CSV-217346.svg?style=for-the-badge&logoColor=white">
   <img src="https://img.shields.io/badge/-Arduino-00979D.svg?logo=arduino&style=for-the-badge&logoColor=white">
   <img src="https://img.shields.io/badge/-Vercel-000000.svg?logo=vercel&style=for-the-badge&logoColor=white">
   <img src="https://img.shields.io/badge/-GitHub-181717.svg?logo=github&style=for-the-badge">
@@ -21,34 +26,39 @@
 ---
 
 ## 目次
+
 - [プロジェクトについて](#プロジェクトについて)
 - [ファイル構成](#ファイル構成)
 - [利用ライブラリ](#利用ライブラリ)
 - [対応デバイス](#対応デバイス)
-- [BLE通信仕様](#BLE通信仕様)
-- [スロット構成](#スロット構成)
+- [設定ファイル](#設定ファイル)
+- [BLE通信仕様](#ble通信仕様)
 - [画面構成](#画面構成)
+- [計測開始条件](#計測開始条件)
 - [グラフ表示](#グラフ表示)
 - [保存データ](#保存データ)
 - [データフロー](#データフロー)
 - [使用方法](#使用方法)
 - [注意点](#注意点)
+- [今後の拡張案](#今後の拡張案)
+
 ---
 
-## 1．プロジェクトについて
+## プロジェクトについて
 
+VitBud WebApp は，耳装着型デバイスに接続された MAX30102 系センサと MLX90632 系センサを，ブラウザ上で接続・計測するための Web アプリケーションである．
 
-VitBud WebApp は，Web Bluetooth を用いて MAX30102 系デバイスと MLX90632 系デバイスをブラウザ上で接続し，リアルタイム表示および Excel 形式でのデータ保存を行う Web アプリケーションである．
+本アプリでは，MAX デバイスと MLX デバイスをそれぞれ動的に追加できる．  
+初期状態では各パネルにデバイスBoxは表示されず，ユーザが「＋ MAX デバイス追加」または「＋ MLX デバイス追加」を押すことで，接続用Boxを追加する．
 
-本アプリは，MAX デバイス 2 台，MLX デバイス 2 台の計 4 台を同時に扱う構成を基本とする．  
-デバイス候補名，UUID，サンプルサイズ，グラフ表示点数，距離判定閾値などの設定は `config.json` で管理す
-る．
+各Boxでは，BLEデバイスの選択，接続，解除，状態表示，リアルタイムデータ表示，個別グラフ表示を行う．  
+計測後は，追加されている各デバイスのデータを個別のCSVファイルとして連続ダウンロードする．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 2．ファイル構成
+## ファイル構成
 
 ```text
 .
@@ -62,54 +72,52 @@ VitBud WebApp は，Web Bluetooth を用いて MAX30102 系デバイスと MLX90
 ### index.html
 
 画面構造を定義するファイルである．
-MAX 2 台，MLX 2 台の接続欄，状態表示欄，リアルタイムグラフ表示欄を持つ．
+MAXパネル，MLXパネル，デバイス追加ボタン，計測開始ボタン，CSVダウンロードボタンを持つ．
 
 ### style.css
 
 画面の見た目を定義するファイルである．
-レイアウト，パネル，ボタン，デバイス選択欄，グラフ領域などのスタイルをまとめている．
+レイアウト，パネル，ボタン，デバイスBox，デバイスごとのグラフ領域などのスタイルをまとめている．
 
 ### app.js
 
-Web Bluetooth による接続，通知受信，データ処理，グラフ更新，Excel 出力を担当する．
+Web Bluetooth による接続，通知受信，データ処理，グラフ更新，CSV出力を担当する．
 `config.json` を読み込み，設定値を反映して動作する．
 
 ### config.json
 
-デバイス候補名，BLE UUID，サンプルサイズ，グラフ表示点数，距離判定閾値，スロット設定を管理する設定ファイルである．
+デバイス候補名，BLE UUID，サンプルサイズ，グラフ表示点数，距離判定閾値，最大デバイス数などを管理する設定ファイルである．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 3．利用ライブラリ
+## 利用ライブラリ
 
 本アプリは以下の外部ライブラリを使用する．
 
-* Chart.js
+* **Chart.js**
 
   * リアルタイムグラフ描画に使用する．
-* SheetJS/xlsx
 
-  * Excel ファイルの生成に使用する．
-
-`index.html` 内で CDN から読み込んでいる．
+`index.html` 内で CDN から読み込む．
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 ```
+
+CSVファイル生成には外部ライブラリを使用せず，JavaScript の `Blob` と `download` 属性を用いる．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 4．対応デバイス
+## 対応デバイス
 
 ### MAX 系デバイス
 
 MAX30102 を用いた脈波取得デバイスを想定する．
-現在の実装では，BPM ではなく，MAX から送信される IR/RED の RAW データを受信する．
+本アプリでは，MAX から送信される IR/RED の RAW データを受信する．
 
 `config.json` に登録されている候補名は以下である．
 
@@ -144,7 +152,35 @@ Ambient 温度，Object 温度，Raw Ambient，Raw Object を受信する．
 
 ---
 
-## 5．BLE 通信仕様
+## 設定ファイル
+
+`config.json` では，アプリ名，バージョン，接続条件，BLE通信仕様，デバイス候補名などを管理する．
+
+主な設定項目は以下である．
+
+| 項目                                | 内容                          |
+| --------------------------------- | --------------------------- |
+| `app.name`                        | アプリ名                        |
+| `app.version`                     | バージョン                       |
+| `app.requireAllDevices`           | 追加されているBoxすべての接続を計測開始条件にするか |
+| `app.maxDevicesPerSensor`         | MAX/MLXそれぞれの最大Box数          |
+| `sensors.MAX.serviceUUID`         | MAXのBLE Service UUID        |
+| `sensors.MAX.characteristicUUID`  | MAXのBLE Characteristic UUID |
+| `sensors.MAX.sampleByteSize`      | MAXの1サンプルのバイト数              |
+| `sensors.MAX.plotCount`           | MAXグラフに表示する最大点数             |
+| `sensors.MAX.distanceIrThreshold` | MAXの距離判定閾値                  |
+| `sensors.MAX.deviceNames`         | MAXの候補デバイス名                 |
+| `sensors.MLX.serviceUUID`         | MLXのBLE Service UUID        |
+| `sensors.MLX.characteristicUUID`  | MLXのBLE Characteristic UUID |
+| `sensors.MLX.sampleByteSize`      | MLXの1サンプルのバイト数              |
+| `sensors.MLX.plotCount`           | MLXグラフに表示する最大点数             |
+| `sensors.MLX.deviceNames`         | MLXの候補デバイス名                 |
+
+<p align="right">(<a href="#top">トップへ戻る</a>)</p>
+
+---
+
+## BLE通信仕様
 
 ### MAX
 
@@ -196,113 +232,118 @@ MLX は温度データ用 Characteristic から通知を受信する．
 
 ---
 
-## 6．スロット構成
+## 画面構成
 
-本アプリでは，画面上の4つの接続枠をスロットとして扱う．
+### 全体
 
-| Slot | 種別  | 初期表示          |
-| ---- | --- | ------------- |
-| max1 | MAX | デバイス 1（MAX R） |
-| max2 | MAX | デバイス 2（MAX L） |
-| mlx1 | MLX | デバイス 3（MLX R） |
-| mlx2 | MLX | デバイス 4（MLX L） |
+画面上部には，以下のボタンを配置する．
 
-スロット名と初期表示名は `config.json` の `slots` で管理する．
+* 計測開始 / 計測停止
+* 一括ダウンロード（CSV）
 
-<p align="right">(<a href="#top">トップへ戻る</a>)</p>
+画面下部には，MAXパネルとMLXパネルを配置する．
+各パネルには，デバイス追加ボタンとデバイスBox一覧を表示する．
 
----
+### MAXパネル
 
-## 7．画面構成
+MAXパネルでは，「＋ MAX デバイス追加」ボタンを押すことでMAX用Boxを追加する．
+各Boxでは以下を表示する．
 
-### MAX
-
-MAX では以下を表示する．
-
+* デバイス名選択プルダウン
+* 接続ボタン
+* 解除ボタン
 * 接続状態
 * 接続デバイス名
 * 計測開始からの経過時間
 * 距離状態
+* IR/RED の個別グラフ
 
 距離状態は IR Value に基づいて判定する．
-判定閾値は `config.json` の `distanceIrThreshold` で管理する．
+IR Value が `distanceIrThreshold` 未満の場合は「離れています」，閾値以上の場合は「正常」と表示する．
 
-```json
-{
-  "distanceIrThreshold": 50000
-}
-```
+### MLXパネル
 
-IR Value が閾値未満の場合は「離れています」，閾値以上の場合は「正常」と表示する．
+MLXパネルでは，「＋ MLX デバイス追加」ボタンを押すことでMLX用Boxを追加する．
+各Boxでは以下を表示する．
 
-### MLX
-
-MLX では以下を表示する．
-
+* デバイス名選択プルダウン
+* 接続ボタン
+* 解除ボタン
 * 接続状態
 * 接続デバイス名
 * Ambient 温度
 * Object 温度
 * 計測開始からの経過時間
+* Object温度の個別グラフ
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 8．グラフ表示
+## 計測開始条件
 
-### MAX グラフ
+`config.json` の `app.requireAllDevices` により，計測開始条件を切り替える．
 
-MAX グラフは，IR/RED の RAW データを表示する．
+```json
+{
+  "requireAllDevices": true
+}
+```
 
-* IR Dev1
-* RED Dev1
-* IR Dev2
-* RED Dev2
+`true` の場合，追加されているすべてのデバイスBoxが接続済みのときに計測開始できる．
+`false` の場合，1台以上のデバイスが接続されていれば計測開始できる．
 
-デバイス1は実線，デバイス2は点線で表示する．
+デバイスBoxが1つも追加されていない場合，計測は開始できない．
+
+<p align="right">(<a href="#top">トップへ戻る</a>)</p>
+
+---
+
+## グラフ表示
+
+### MAXグラフ
+
+MAXでは，デバイスBoxごとに個別のグラフを表示する．
+各グラフには以下の2系列を表示する．
+
+* IR
+* RED
+
 IR と RED は別の Y 軸で表示する．
+表示点数は `config.json` の `sensors.MAX.plotCount` に従う．
 
-表示点数は `config.json` の `plotCount` で管理する．
+### MLXグラフ
 
-```json
-{
-  "plotCount": 100
-}
-```
+MLXでは，デバイスBoxごとに個別のグラフを表示する．
+各グラフには以下の1系列を表示する．
 
-### MLX グラフ
+* Object 温度
 
-MLX グラフは，Object 温度を表示する．
-
-* Obj Dev3
-* Obj Dev4
-
-表示点数は `config.json` の `plotCount` で管理する．
-
-```json
-{
-  "plotCount": 50
-}
-```
+表示点数は `config.json` の `sensors.MLX.plotCount` に従う．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 9．保存データ
+## 保存データ
 
-計測データはブラウザ上のメモリに蓄積される．
-「一括ダウンロード（Excel）」を押すと，SheetJS により Excel ファイルを生成する．
+計測データは，追加されている各デバイスBoxごとにブラウザ上のメモリへ蓄積される．
+「一括ダウンロード（CSV）」を押すと，存在するデバイスBoxの数に応じて，CSVファイルを連続ダウンロードする．
 
-出力ファイル名は以下である．
+CSVファイル名は以下の形式である．
 
 ```text
-VitSence_4Dev_Measurement.xlsx
+deviceName_yyyy-mm-dd-hh-mm.csv
 ```
 
-シート名は，接続時に選択したデバイス名を使用する．
-デバイス名が取得できない場合は，`MAX1`，`MAX2`，`MLX1`，`MLX2` を使用する．
+デバイス名に空白が含まれる場合，空白は `_` に置き換える．
+例：
+
+```text
+MAX_R_2026-05-12-14-30.csv
+MAX_bub_2026-05-12-14-30.csv
+MLX_L_mini_2026-05-12-14-30.csv
+```
 
 ### MAX の保存列
 
@@ -332,50 +373,59 @@ VitSence_4Dev_Measurement.xlsx
 
 ---
 
-## 10．データフロー
+## データフロー
 
 ```mermaid
 flowchart LR
-    subgraph Devices["BLE デバイス"]
-      M1["MAX device 1"]
-      M2["MAX device 2"]
-      L1["MLX device 1"]
-      L2["MLX device 2"]
+    subgraph User["ユーザ操作"]
+      U1["MAX/MLX Box追加"]
+      U2["デバイス名選択"]
+      U3["BLE接続"]
+      U4["計測開始/停止"]
+      U5["CSV一括DL"]
     end
 
     subgraph Browser["VitBud WebApp"]
       C1["config.json 読み込み"]
-      B1["Web Bluetooth 接続"]
-      B2["Notify 受信"]
-      B3["バイト列デコード"]
-      B4["UI 更新"]
-      B5["Chart.js グラフ更新"]
-      B6["ブラウザ内メモリに保存"]
-      B7["SheetJS で Excel 出力"]
+      B1["デバイスBox生成"]
+      B2["Web Bluetooth 接続"]
+      B3["Notify 受信"]
+      B4["バイト列デコード"]
+      B5["UI更新"]
+      B6["デバイスごとのChart.jsグラフ更新"]
+      B7["ブラウザ内メモリに保存"]
+      B8["デバイスごとにCSV生成"]
+    end
+
+    subgraph Devices["BLEデバイス"]
+      D1["MAX / MLX デバイス"]
     end
 
     C1 --> B1
-    M1 --> B2
-    M2 --> B2
-    L1 --> B2
-    L2 --> B2
-    B1 --> B2
-    B2 --> B3
+    U1 --> B1
+    U2 --> B2
+    U3 --> B2
+    B2 --> D1
+    U4 --> B3
+    D1 --> B3
     B3 --> B4
-    B3 --> B5
-    B3 --> B6
-    B6 --> B7
+    B4 --> B5
+    B4 --> B6
+    B4 --> B7
+    U5 --> B8
+    B7 --> B8
 ```
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 11．使用方法
+## 使用方法
 
-### 1．ローカルサーバを起動する
+### 1．WebAppを開く
 
-`config.json` を `fetch()` で読み込むため，`index.html` を直接ダブルクリックして開くのではなく，ローカルサーバ経由で開く．
+VercelなどにデプロイしたURLを開く．
+ローカルで確認する場合は，`config.json` を `fetch()` で読み込むため，`index.html` を直接ダブルクリックせず，ローカルサーバ経由で開く．
 
 例：
 
@@ -389,43 +439,56 @@ python -m http.server 8000
 http://localhost:8000
 ```
 
-Vercel 等にデプロイする場合は，`index.html`，`style.css`，`app.js`，`config.json` を同じ階層に配置する．
+### 2．デバイスBoxを追加する
 
-### 2．デバイスを選択する
+MAXを接続する場合は，「＋ MAX デバイス追加」を押す．
+MLXを接続する場合は，「＋ MLX デバイス追加」を押す．
 
-各スロットのプルダウンから接続するデバイス名を選択する．
+各センサ種別につき，0〜5台まで追加できる．
 
-### 3．接続する
+### 3．デバイス名を選択する
 
-各スロットの「接続」ボタンを押し，BLE デバイスを選択して接続する．
+追加されたBox内のプルダウンから，接続したいBLEデバイス名を選択する．
 
-### 4．計測を開始する
+### 4．接続する
 
-必要なデバイスが接続されると「計測開始」ボタンが有効化される．
-ボタンを押すと，各デバイスの通知受信を開始する．
+各Boxの「接続」ボタンを押し，BLEデバイスを選択して接続する．
+接続に成功すると，状態が「接続済み」になり，接続したデバイス名が表示される．
 
-### 5．計測を停止する
+### 5．計測を開始する
+
+必要なデバイスが接続されると，「計測開始」ボタンが有効化される．
+ボタンを押すと，追加されている各デバイスの通知受信を開始する．
+
+### 6．データを確認する
+
+計測中は，各Box内の数値表示と個別グラフがリアルタイムに更新される．
+
+### 7．計測を停止する
 
 計測中に「計測停止」ボタンを押すと，各デバイスの通知受信を停止する．
 
-### 6．データを保存する
+### 8．CSVを保存する
 
-データが1件以上受信されると「一括ダウンロード（Excel）」ボタンが有効化される．
-ボタンを押すと，Excel ファイルを保存する．
+データが1件以上受信されると，「一括ダウンロード（CSV）」ボタンが有効化される．
+ボタンを押すと，追加されている各デバイスごとにCSVファイルを連続ダウンロードする．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
 
 ---
 
-## 12．注意点
+## 注意点
 
 * Web Bluetooth は対応ブラウザでのみ使用できる．
 * iOS Safari では Web Bluetooth が利用できない場合がある．
+* Web Bluetooth を使用するため，HTTPS環境または `localhost` で開く必要がある．
 * `config.json` は `index.html` と同じ階層に配置する．
 * `config.json` を変更した場合は，ページを再読み込みする．
 * デバイス名は Arduino 側の BLE アドバタイズ名と一致させる．
 * MAX と MLX の送信バイト列は，この README の仕様と一致させる．
+* 計測中はデバイスBoxの追加・削除を行わない．
 * 計測後，接続を解除しても保存済みデータは消えない．
 * 新しい計測を開始すると，前回のブラウザ内データとグラフはリセットされる．
+* 1クリックで複数CSVを保存するため，ブラウザによっては複数ファイルのダウンロード許可を求められる場合がある．
 
 <p align="right">(<a href="#top">トップへ戻る</a>)</p>
