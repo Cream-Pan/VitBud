@@ -567,5 +567,5 @@ downloadAllBtn.addEventListener('click', () => {
   appendSheet(wb, devices['mlx1'].name || 'MLX1', devices['mlx1'].data, 'MLX');
   appendSheet(wb, devices['mlx2'].name || 'MLX2', devices['mlx2'].data, 'MLX');
   
-  XLSX.writeFile(wb, "VitSence_4Dev_Measurement.xlsx");
+  XLSX.writeFile(wb, "VitBud_4Dev_Measurement.xlsx");
 });

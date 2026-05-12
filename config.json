@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "VitSense",
+    "name": "VitBud",
     "version": "0.2.0",
     "requireAllDevices": true
   },
