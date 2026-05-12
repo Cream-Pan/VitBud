@@ -523,16 +523,38 @@ measureAllBtn.addEventListener('click', async () => {
   }
 });
 
-// ===== ダウンロード (Excel) =====
-function appendSheet(wb, name, data, type) {
-  if (data.length === 0) {
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([["データなし"]]), name);
-    return;
+// ===== ダウンロード (CSV) =====
+function formatTimestampForFilename(date = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}`;
+}
+
+function sanitizeFilename(name) {
+  return String(name)
+    .replace(/[\\/:*?"<>|]/g, "_")
+    .trim();
+}
+
+function escapeCsvValue(value) {
+  if (value === null || value === undefined) return "";
+  const s = String(value);
+  if (/[",\n\r]/.test(s)) {
+    return `"${s.replace(/"/g, '""')}"`;
   }
-  
-  let rows;
-  if (type === 'MAX') {
-    rows = data.map(r => ({
+  return s;
+}
+
+function rowsToCsv(rows, headers) {
+  const headerLine = headers.join(",");
+  const bodyLines = rows.map(row =>
+    headers.map(header => escapeCsvValue(row[header])).join(",")
+  );
+  return [headerLine, ...bodyLines].join("\r\n");
+}
+
+function buildRows(data, type) {
+  if (type === "MAX") {
+    return data.map(r => ({
       IR_Value: r.irValue,
       RED_Value: r.redValue,
       SensorElapsed_ms: r.sensor_elapsed_ms,
@@ -540,32 +562,78 @@ function appendSheet(wb, name, data, type) {
       RecvJST: r.recv_jst,
       MeasureElapsed_s: r.measure_elapsed_s
     }));
-  } else {
-    rows = data.map(r => ({
-      Ambient_C: r.amb,
-      Object_C: r.obj,
-      Raw_Ambient: r.rawAmbient,
-      Raw_Object: r.rawObject,
-      SensorElapsed_ms: r.sensor_elapsed_ms,
-      MeasureElapsed_s: r.measure_elapsed_s,
-      // MeasureElapsed_s は削除
-      RecvEpoch_ms: r.recv_epoch_ms,
-      RecvJST: r.recv_jst
-    }));
   }
-  
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, name);
+
+  return data.map(r => ({
+    Ambient_C: r.amb,
+    Object_C: r.obj,
+    Raw_Ambient: r.rawAmbient,
+    Raw_Object: r.rawObject,
+    SensorElapsed_ms: r.sensor_elapsed_ms,
+    MeasureElapsed_s: r.measure_elapsed_s,
+    RecvEpoch_ms: r.recv_epoch_ms,
+    RecvJST: r.recv_jst
+  }));
 }
 
-downloadAllBtn.addEventListener('click', () => {
-  const wb = XLSX.utils.book_new();
-  
-  // シート名はデバイス名 or デフォルトIDを使用
-  appendSheet(wb, devices['max1'].name || 'MAX1', devices['max1'].data, 'MAX');
-  appendSheet(wb, devices['max2'].name || 'MAX2', devices['max2'].data, 'MAX');
-  appendSheet(wb, devices['mlx1'].name || 'MLX1', devices['mlx1'].data, 'MLX');
-  appendSheet(wb, devices['mlx2'].name || 'MLX2', devices['mlx2'].data, 'MLX');
-  
-  XLSX.writeFile(wb, "VitBud_4Dev_Measurement.xlsx");
+function csvHeaders(type) {
+  if (type === "MAX") {
+    return [
+      "IR_Value",
+      "RED_Value",
+      "SensorElapsed_ms",
+      "RecvEpoch_ms",
+      "RecvJST",
+      "MeasureElapsed_s"
+    ];
+  }
+
+  return [
+    "Ambient_C",
+    "Object_C",
+    "Raw_Ambient",
+    "Raw_Object",
+    "SensorElapsed_ms",
+    "MeasureElapsed_s",
+    "RecvEpoch_ms",
+    "RecvJST"
+  ];
+}
+
+function downloadCsv(deviceName, data, type, timestamp) {
+  const rows = buildRows(data, type);
+  const headers = csvHeaders(type);
+  const csv = rowsToCsv(rows, headers);
+
+  const bom = "\uFEFF";
+  const blob = new Blob([bom + csv], { type: "text/csv;charset=utf-8;" });
+
+  const safeName = sanitizeFilename(deviceName);
+  const filename = `${safeName}-${timestamp}.csv`;
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+downloadAllBtn.addEventListener("click", () => {
+  const timestamp = formatTimestampForFilename();
+
+  const targets = [
+    { id: "max1", fallbackName: "MAX1", type: "MAX" },
+    { id: "max2", fallbackName: "MAX2", type: "MAX" },
+    { id: "mlx1", fallbackName: "MLX1", type: "MLX" },
+    { id: "mlx2", fallbackName: "MLX2", type: "MLX" }
+  ];
+
+  targets.forEach(target => {
+    const dev = devices[target.id];
+    const deviceName = dev.name || target.fallbackName;
+    downloadCsv(deviceName, dev.data, target.type, timestamp);
+  });
 });
