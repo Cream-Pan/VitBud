@@ -22,7 +22,13 @@ function samplesPerNotification(type) {
 }
 
 function plotCount(type) {
-  return CONFIG.sensors[type].plotCount;
+  const cfg = CONFIG.sensors[type];
+
+  if (Number.isFinite(cfg.chartVisibleSeconds) && Number.isFinite(cfg.samplingRateHz)) {
+    return Math.round(cfg.chartVisibleSeconds * cfg.samplingRateHz);
+  }
+
+  return cfg.plotCount ?? 100;
 }
 
 function distanceIrThreshold() {
