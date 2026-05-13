@@ -51,6 +51,56 @@ function activeDevices(type = null) {
   return Object.values(devices).filter(dev => !type || dev.type === type);
 }
 
+function selectedDeviceNames(type, excludeId = null) {
+  return Object.entries(devices)
+    .filter(([id, dev]) => id !== excludeId && dev.type === type && dev.ui?.select)
+    .map(([, dev]) => dev.ui.select.value)
+    .filter(Boolean);
+}
+
+function isDeviceNameAlreadyConnected(type, deviceName, excludeId = null) {
+  return Object.entries(devices).some(([id, dev]) => {
+    if (id === excludeId) return false;
+    if (dev.type !== type) return false;
+    if (!dev.device?.gatt?.connected) return false;
+
+    return dev.name === deviceName || dev.ui?.select?.value === deviceName;
+  });
+}
+
+function hasAvailableDeviceName(type) {
+  const used = new Set(
+    activeDevices(type)
+      .map(dev => dev.ui?.select?.value)
+      .filter(Boolean)
+  );
+
+  return sensorConfig(type).deviceNames.some(name => !used.has(name));
+}
+
+function updateDeviceNameOptions(type = null) {
+  const targets = Object.values(devices).filter(dev => !type || dev.type === type);
+
+  targets.forEach(dev => {
+    if (!dev.ui?.select) return;
+
+    const usedByOthers = new Set(selectedDeviceNames(dev.type, dev.id));
+    const isConnected = !!dev.device?.gatt?.connected;
+
+    Array.from(dev.ui.select.options).forEach(opt => {
+      opt.disabled = usedByOthers.has(opt.value);
+    });
+
+    // 未接続のBoxで，現在選択中の名前が他Boxで使われた場合は，空いている名前へ逃がす
+    if (!isConnected && dev.ui.select.selectedOptions[0]?.disabled) {
+      const firstAvailable = Array.from(dev.ui.select.options).find(opt => !opt.disabled);
+      if (firstAvailable) {
+        dev.ui.select.value = firstAvailable.value;
+      }
+    }
+  });
+}
+
 function applyAppConfig() {
   const appName = CONFIG.app.name || "VitSense";
   const version = CONFIG.app.version || "";
@@ -100,6 +150,10 @@ function init() {
 }
 
 function createDeviceBox(type) {
+  if (isMeasuring()) {
+     alert("計測中はデバイスBoxを追加できません．計測停止後に追加してください．");
+     return;
+   }
   if (activeDevices(type).length >= maxDevicesPerSensor()) {
     alert(`${type} デバイスは最大 ${maxDevicesPerSensor()} 台までです．`);
     return;
@@ -109,7 +163,7 @@ function createDeviceBox(type) {
 
   const prefix = type.toLowerCase();
   const id = `${prefix}${deviceCounters[type]}`;
-  const displayNo = activeDevices(type).length + 1;
+  const displayNo = deviceCounters[type];
   const cfg = sensorConfig(type);
 
   const box = document.createElement("div");
@@ -198,7 +252,13 @@ function createDeviceBox(type) {
     dev.ui.select.appendChild(opt);
   });
 
+  dev.ui.select.addEventListener("change", () => {
+    updateDeviceNameOptions(dev.type);
+  });
+
   devices[id] = dev;
+
+  updateDeviceNameOptions(type);
 
   createDeviceChart(dev);
 
@@ -348,6 +408,7 @@ async function removeDeviceBox(id) {
 
   delete devices[id];
   updateUnifiedButtons();
+  updateDeviceNameOptions(dev.type);
 }
 
 // 共通チャート更新関数
@@ -543,6 +604,18 @@ async function connectDevice(id) {
     return;
   }
 
+  if (dev.ui.select.selectedOptions[0]?.disabled) {
+    alert(`"${selectedName}" はすでに別のBoxで選択されています．別のデバイス名を選択してください．`);
+    updateDeviceNameOptions(dev.type);
+    return;
+  }
+ 
+  if (isDeviceNameAlreadyConnected(dev.type, selectedName, id)) {
+    alert(`"${selectedName}" はすでに接続されています．同じデバイス名は同時に接続できません．`);
+    updateDeviceNameOptions(dev.type);
+    return;
+  }
+
   try {
     dev.ui.status.textContent = "接続中...";
     const device = await navigator.bluetooth.requestDevice({
@@ -572,6 +645,7 @@ async function connectDevice(id) {
     dev.ui.select.disabled = true;
     dev.ui.disconnect.disabled = false;
     updateDeviceChartTitle(dev);
+    updateDeviceNameOptions(dev.type);
 
     // 切断時処理
     device.addEventListener('gattserverdisconnected', () => {
@@ -585,6 +659,7 @@ async function connectDevice(id) {
       }
       dev.buffer = new Uint8Array();
       dev.measureStartEpochMs = null;
+      updateDeviceNameOptions(dev.type);
       updateUnifiedButtons();
     });
 
@@ -641,8 +716,11 @@ function updateUnifiedButtons() {
   const mlxCount = activeDevices("MLX").length;
   const limit = maxDevicesPerSensor();
 
-  addButtons.MAX.disabled = measuring || maxCount >= limit;
-  addButtons.MLX.disabled = measuring || mlxCount >= limit;
+  addButtons.MAX.disabled =
+    measuring || maxCount >= limit || !hasAvailableDeviceName("MAX");
+
+  addButtons.MLX.disabled =
+    measuring || mlxCount >= limit || !hasAvailableDeviceName("MLX");
 
   countLabels.MAX.textContent = `${maxCount} / ${limit}`;
   countLabels.MLX.textContent = `${mlxCount} / ${limit}`;
@@ -668,6 +746,7 @@ measureAllBtn.addEventListener('click', async () => {
       }
     }
     measureAllBtn.textContent = "計測開始";
+    updateUnifiedButtons();
     
   } else {
     // 開始処理
@@ -685,11 +764,12 @@ measureAllBtn.addEventListener('click', async () => {
     }
 
     await Promise.all(
-      Object.values(devices)
+      Objec.values(devices)
         .filter(dev => dev.characteristic)
         .map(dev => dev.characteristic.startNotifications())
     );
     measureAllBtn.textContent = "計測停止";
+    updateUnifietdButtons();
   }
 });
 
