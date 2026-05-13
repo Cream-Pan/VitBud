@@ -213,6 +213,6 @@ select.device-select {
 
 .device-chart-container canvas {
   width: 100% !important;
-  max-height: 240px !important;
-  max-height: none;
+  max-height: 100% !important;
+  max-height: none !important;
 }

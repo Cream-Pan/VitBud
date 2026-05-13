@@ -17,6 +17,10 @@ function sampleByteSize(type) {
   return CONFIG.sensors[type].sampleByteSize;
 }
 
+function samplesPerNotification(type) {
+  return CONFIG.sensors[type].samplesPerNotification ?? 1;
+}
+
 function plotCount(type) {
   return CONFIG.sensors[type].plotCount;
 }
@@ -162,6 +166,8 @@ function createDeviceBox(type) {
     buffer: new Uint8Array(),
     eventHandler: null,
     chart: null,
+    sensorBaseMs: null,
+    lastChartUpdateMs: 0,
     ui: {
       box,
       title: document.getElementById(`${id}-title`),
@@ -311,7 +317,7 @@ function clearDeviceChart(dev) {
   dev.chart.data.datasets.forEach(ds => {
     ds.data = [];
   });
-  dev.chart.update("none");
+  dev.chart.update("none"); 
 }
 
 async function removeDeviceBox(id) {
@@ -339,18 +345,20 @@ async function removeDeviceBox(id) {
 }
 
 // 共通チャート更新関数
-function updateMaxChartData(id, elapsedS, ir, red) {
+function updateMaxChartBatch(id, points) {
   const dev = devices[id];
-  if (!dev || !dev.chart) return;
+  if (!dev || !dev.chart || points.length === 0) return;
 
   const maxPts = plotCount("MAX");
   const irDataset = dev.chart.data.datasets[0];
   const redDataset = dev.chart.data.datasets[1];
 
-  irDataset.data.push({ x: elapsedS, y: ir });
-  redDataset.data.push({ x: elapsedS, y: red });
+  points.forEach(p => {
+    irDataset.data.push({ x: p.x, y: p.ir });
+    redDataset.data.push({ x: p.x, y: p.red });
+  });
 
-  if (irDataset.data.length > maxPts) {
+  while (irDataset.data.length > maxPts) {
     irDataset.data.shift();
     redDataset.data.shift();
   }
@@ -379,6 +387,8 @@ function clearDeviceData(id) {
   dev.data = [];
   dev.buffer = new Uint8Array();
   dev.measureStartEpochMs = null;
+  dev.sensorBaseMs = null;
+  dev.lastChartUpdateMs = 0;
   
   dev.ui.timeValue.textContent = "-";
   if (dev.type === 'MAX') dev.ui.distanceStatus.textContent = "-";
@@ -402,11 +412,23 @@ function handleMaxNotification(event, id) {
   if (dev.measureStartEpochMs === null) { dev.buffer = new Uint8Array(); return; }
 
   const byteSize = sampleByteSize('MAX');
-  const newData = new Uint8Array(event.target.value.buffer);
+  const v = event.target.value;
+  const newData = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+   if (newData.length % byteSize !== 0) {
+    console.warn(
+      `[${id}] MAX notification byte length is not multiple of sample size:`,
+      newData.length,
+      "sampleByteSize=",
+      byteSize
+    );
+  }
+
   const combined = new Uint8Array(dev.buffer.length + newData.length);
   combined.set(dev.buffer);
   combined.set(newData, dev.buffer.length);
   dev.buffer = combined;
+
+  const chartPoints = [];
 
   while (dev.buffer.length >= byteSize) {
     const sampleView = new DataView(dev.buffer.buffer, 0, byteSize);
@@ -414,9 +436,12 @@ function handleMaxNotification(event, id) {
     const redValue = sampleView.getUint32(4, true);
     const sensorElapsedMs = sampleView.getUint32(8, true);
 
+    if (dev.sensorBaseMs === null) {
+      dev.sensorBaseMs = sensorElapsedMs;
+    }
+    const sensorRelativeElapsedS = (sensorElapsedMs - dev.sensorBaseMs) / 1000;
+
     const recvEpochMs = Date.now();
-    // 初回時刻同期は startMeasurementAll で行われるが、念のため
-    if(!dev.measureStartEpochMs) dev.measureStartEpochMs = recvEpochMs;
     const measureElapsedS = (recvEpochMs - dev.measureStartEpochMs) / 1000;
 
     // 距離判定
@@ -437,12 +462,19 @@ function handleMaxNotification(event, id) {
       measure_elapsed_s: measureElapsedS
     });
 
+    chartPoints.push({
+      x: sensorRelativeElapsedS,
+      ir: irValue,
+      red: redValue
+    });
+
     if (downloadAllBtn.disabled) updateUnifiedButtons();
 
     dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
-    updateMaxChartData(id, measureElapsedS, irValue, redValue);
-
     dev.buffer = dev.buffer.slice(byteSize);
+  }
+  if (chartPoints.length > 0) {
+    updateMaxChartBatch(id, chartPoints);
   }
 }
 
@@ -640,15 +672,17 @@ measureAllBtn.addEventListener('click', async () => {
     
     resetAllCharts();
     const startTime = Date.now();
-    
+
     for (const id in devices) {
-      clearDeviceData(id); // データリセット
-      const dev = devices[id];
-      if (dev.characteristic) {
-        await dev.characteristic.startNotifications();
-        dev.measureStartEpochMs = startTime; 
-      }
+      clearDeviceData(id);
+      devices[id].measureStartEpochMs = startTime;
     }
+
+    await Promise.all(
+      Object.values(devices)
+        .filter(dev => dev.characteristic)
+        .map(dev => dev.characteristic.startNotifications())
+    );
     measureAllBtn.textContent = "計測停止";
   }
 });

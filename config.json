@@ -10,6 +10,7 @@
       "serviceUUID": "3a5197ff-07ce-499e-8d37-d3d457af549a",
       "characteristicUUID": "abcdef01-1234-5678-1234-56789abcdef1",
       "sampleByteSize": 12,
+      "samplesPerNotification": 5,
       "plotCount": 100,
       "distanceIrThreshold": 50000,
       "deviceNames": [
@@ -18,7 +19,7 @@
         "MAX L",
         "MAX L mini",
         "MAX fin",
-        "MAX bub"
+        "MAX earlobe"
       ]
     },
     "MLX": {
