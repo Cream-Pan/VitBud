@@ -764,12 +764,12 @@ measureAllBtn.addEventListener('click', async () => {
     }
 
     await Promise.all(
-      Objec.values(devices)
+      Object.values(devices)
         .filter(dev => dev.characteristic)
         .map(dev => dev.characteristic.startNotifications())
     );
     measureAllBtn.textContent = "計測停止";
-    updateUnifietdButtons();
+    updateUnifiedButtons();
   }
 });
 
