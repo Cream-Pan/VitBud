@@ -35,6 +35,15 @@ function distanceIrThreshold() {
   return CONFIG.sensors.MAX.distanceIrThreshold;
 }
 
+function maxPacketHeaderBytes() {
+  return CONFIG.sensors.MAX.packetHeaderBytes ?? 0;
+}
+
+function maxPacketFormat(formatId) {
+  const formats = CONFIG.sensors.MAX.packetFormats ?? {};
+  return formats[String(formatId)] ?? null;
+}
+
 function requireAllDevices() {
   return CONFIG.app.requireAllDevices;
 }
@@ -185,6 +194,7 @@ function createDeviceBox(type) {
       <div class="row">名前: <span id="${id}-deviceName">-</span></div>
       <div class="row">時間: <span id="${id}-timeValue" class="val">-</span> s</div>
       <div class="row">距離: <span id="${id}-distanceStatus">-</span></div>
+      <div class="row">形式: <span id="${id}-formatStatus">-</span></div>
       <div class="device-chart-container">
         <canvas id="${id}-chart"></canvas>
       </div>
@@ -239,6 +249,7 @@ function createDeviceBox(type) {
       deviceName: document.getElementById(`${id}-deviceName`),
       timeValue: document.getElementById(`${id}-timeValue`),
       distanceStatus: document.getElementById(`${id}-distanceStatus`),
+      formatStatus: document.getElementById(`${id}-formatStatus`),
       ambValue: document.getElementById(`${id}-ambValue`),
       objValue: document.getElementById(`${id}-objValue`),
       chartCanvas: document.getElementById(`${id}-chart`)
@@ -459,6 +470,7 @@ function clearDeviceData(id) {
   
   dev.ui.timeValue.textContent = "-";
   if (dev.type === 'MAX') dev.ui.distanceStatus.textContent = "-";
+  if (dev.type === 'MAX' && dev.ui.formatStatus) dev.ui.formatStatus.textContent = "-";
   if (dev.type === 'MLX') {
     dev.ui.ambValue.textContent = "-";
     dev.ui.objValue.textContent = "-";
@@ -476,70 +488,132 @@ function resetAllCharts() {
 // ===== 通知ハンドラ =====
 function handleMaxNotification(event, id) {
   const dev = devices[id];
-  if (dev.measureStartEpochMs === null) { dev.buffer = new Uint8Array(); return; }
+  if (dev.measureStartEpochMs === null) {
+    dev.buffer = new Uint8Array();
+    return;
+  }
 
-  const byteSize = sampleByteSize('MAX');
   const v = event.target.value;
   const newData = new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
-   if (newData.length % byteSize !== 0) {
-    console.warn(
-      `[${id}] MAX notification byte length is not multiple of sample size:`,
-      newData.length,
-      "sampleByteSize=",
-      byteSize
-    );
-  }
 
   const combined = new Uint8Array(dev.buffer.length + newData.length);
   combined.set(dev.buffer);
   combined.set(newData, dev.buffer.length);
   dev.buffer = combined;
 
+  const headerBytes = maxPacketHeaderBytes();
   const chartPoints = [];
 
-  while (dev.buffer.length >= byteSize) {
-    const sampleView = new DataView(dev.buffer.buffer, 0, byteSize);
-    const irValue = sampleView.getUint32(0, true);
-    const redValue = sampleView.getUint32(4, true);
-    const sensorElapsedMs = sampleView.getUint32(8, true);
+  while (dev.buffer.length >= headerBytes) {
+    const formatId = dev.buffer[0];
+    const sampleCount = dev.buffer[1];
+    const sampleBytes = dev.buffer[2];
 
-    if (dev.sensorBaseMs === null) {
-      dev.sensorBaseMs = sensorElapsedMs;
-    }
-    const sensorRelativeElapsedS = (sensorElapsedMs - dev.sensorBaseMs) / 1000;
+    const format = maxPacketFormat(formatId);
 
-    const recvEpochMs = Date.now();
-    const measureElapsedS = (recvEpochMs - dev.measureStartEpochMs) / 1000;
-
-    // 距離判定
-    if (irValue < distanceIrThreshold()) {
-      dev.ui.distanceStatus.textContent = "離れています";
-      dev.ui.distanceStatus.style.color = "#d00";
-    } else {
-      dev.ui.distanceStatus.textContent = "正常";
-      dev.ui.distanceStatus.style.color = "#046307";
+    if (!format) {
+      console.warn(`[${id}] Unknown MAX packet formatId:`, formatId);
+      dev.buffer = new Uint8Array();
+      return;
     }
 
-    // データ保存
-    dev.data.push({
-      irValue, redValue,
-      sensor_elapsed_ms: sensorElapsedMs,
-      recv_epoch_ms: recvEpochMs,
-      recv_jst: formatLocalTimeWithMs(recvEpochMs),
-      measure_elapsed_s: measureElapsedS
-    });
+    if (sampleBytes !== format.sampleByteSize) {
+      console.warn(
+        `[${id}] MAX sampleBytes mismatch:`,
+        sampleBytes,
+        "expected=",
+        format.sampleByteSize
+      );
+      dev.buffer = new Uint8Array();
+      return;
+    }
 
-    chartPoints.push({
-      x: sensorRelativeElapsedS,
-      ir: irValue,
-      red: redValue
-    });
+    if (sampleCount === 0) {
+      console.warn(`[${id}] MAX sampleCount is 0`);
+      dev.buffer = dev.buffer.slice(headerBytes);
+      continue;
+    }
+
+    const packetBytes = headerBytes + sampleCount * sampleBytes;
+
+    if (dev.buffer.length < packetBytes) {
+      break;
+    }
+
+    if (dev.ui.formatStatus) {
+      dev.ui.formatStatus.textContent = format.hasAccel ? "PPG + Accel" : "PPG";
+    }
+
+    for (let i = 0; i < sampleCount; i++) {
+      const offset = headerBytes + i * sampleBytes;
+      const sampleView = new DataView(
+        dev.buffer.buffer,
+        dev.buffer.byteOffset + offset,
+        sampleBytes
+      );
+
+      const irValue = sampleView.getUint32(0, true);
+      const redValue = sampleView.getUint32(4, true);
+
+      let accelXMmg = null;
+      let accelYMg = null;
+      let accelZMg = null;
+      let sensorElapsedMs;
+
+      if (format.hasAccel) {
+        accelXMmg = sampleView.getInt16(8, true);
+        accelYMg = sampleView.getInt16(10, true);
+        accelZMg = sampleView.getInt16(12, true);
+        sensorElapsedMs = sampleView.getUint32(14, true);
+      } else {
+        sensorElapsedMs = sampleView.getUint32(8, true);
+      }
+
+      if (dev.sensorBaseMs === null) {
+        dev.sensorBaseMs = sensorElapsedMs;
+      }
+
+      const sensorRelativeElapsedS =
+        (sensorElapsedMs - dev.sensorBaseMs) / 1000;
+
+      const recvEpochMs = Date.now();
+      const measureElapsedS =
+        (recvEpochMs - dev.measureStartEpochMs) / 1000;
+
+      if (irValue < distanceIrThreshold()) {
+        dev.ui.distanceStatus.textContent = "離れています";
+        dev.ui.distanceStatus.style.color = "#d00";
+      } else {
+        dev.ui.distanceStatus.textContent = "正常";
+        dev.ui.distanceStatus.style.color = "#046307";
+      }
+
+      dev.data.push({
+        irValue,
+        redValue,
+        accel_x_mg: accelXMmg,
+        accel_y_mg: accelYMg,
+        accel_z_mg: accelZMg,
+        sensor_elapsed_ms: sensorElapsedMs,
+        recv_epoch_ms: recvEpochMs,
+        recv_jst: formatLocalTimeWithMs(recvEpochMs),
+        measure_elapsed_s: measureElapsedS
+      });
+
+      chartPoints.push({
+        x: sensorRelativeElapsedS,
+        ir: irValue,
+        red: redValue
+      });
+
+      dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
+    }
+
+    dev.buffer = dev.buffer.slice(packetBytes);
 
     if (downloadAllBtn.disabled) updateUnifiedButtons();
-
-    dev.ui.timeValue.textContent = measureElapsedS.toFixed(2);
-    dev.buffer = dev.buffer.slice(byteSize);
   }
+
   if (chartPoints.length > 0) {
     updateMaxChartBatch(id, chartPoints);
   }
@@ -808,6 +882,9 @@ function buildRows(data, type) {
     return data.map(r => ({
       IR_Value: r.irValue,
       RED_Value: r.redValue,
+      Accel_X_mg: r.accel_x_mg,
+      Accel_Y_mg: r.accel_y_mg,
+      Accel_Z_mg: r.accel_z_mg,
       SensorElapsed_ms: r.sensor_elapsed_ms,
       RecvEpoch_ms: r.recv_epoch_ms,
       RecvJST: r.recv_jst,
@@ -832,6 +909,9 @@ function csvHeaders(type) {
     return [
       "IR_Value",
       "RED_Value",
+      "Accel_X_mg",
+      "Accel_Y_mg",
+      "Accel_Z_mg",
       "SensorElapsed_ms",
       "RecvEpoch_ms",
       "RecvJST",
